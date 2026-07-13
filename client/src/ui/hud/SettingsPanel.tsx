@@ -1,23 +1,30 @@
 import { useState } from 'react'
-import { clearCachedVRM } from '../../avatar/vrmCache'
 import type { Game } from '../../game/Game'
 import { getTokenEndpoint, saveTokenEndpoint } from '../../net/config'
+import type { HotbarSlot } from '../../state/hotbar'
 import { useAppStore } from '../../state/store'
 import { FloatingWindow } from './FloatingWindow'
+import { PaletteItem } from './PaletteItem'
 
 interface Props {
   game: Game | null
-  onOpenVRM: () => void
 }
 
+/** 各種操作はコマンド。クリックで実行、ドラッグでホットバーへ登録できる */
+const SETTINGS_ACTIONS: HotbarSlot[] = [
+  { command: '/vrm open', label: 'VRMを開く' },
+  { command: '/camera toggle', label: 'カメラ切替' },
+  { command: '/camera snap', label: 'キャラへ視点' },
+  { command: '/vrm clear', label: 'VRMキャッシュ削除' },
+  { command: '/hud edit', label: 'HUD編集' },
+]
+
 /** 設定ウィンドウ。/settings(ホットバー・メニュー(Esc))から開く */
-export function SettingsWindow({ game, onOpenVRM }: Props) {
+export function SettingsWindow({ game }: Props) {
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen)
-  const cameraFollow = useAppStore((s) => s.cameraFollow)
   const dispatch = useAppStore((s) => s.dispatch)
   const playerName = useAppStore((s) => s.playerName)
   const setPlayerName = useAppStore((s) => s.setPlayerName)
-  const setHudEditMode = useAppStore((s) => s.setHudEditMode)
   const [endpoint, setEndpoint] = useState(getTokenEndpoint)
   const [nameInput, setNameInput] = useState(playerName)
 
@@ -25,7 +32,7 @@ export function SettingsWindow({ game, onOpenVRM }: Props) {
     <FloatingWindow
       title="設定"
       onClose={() => setSettingsOpen(false)}
-      initialPos={{ x: window.innerWidth - 400, y: 56 }}
+      initialPos={{ x: window.innerWidth / 2 - 190, y: window.innerHeight / 2 - 280 }}
     >
       <div className="hud-settings-content">
         <div className="hud-settings-section">
@@ -66,50 +73,36 @@ export function SettingsWindow({ game, onOpenVRM }: Props) {
           </div>
         </div>
         <div className="hud-settings-section">
+          <div className="hud-settings-label">
+            操作(クリックで実行 / ホットバーへドラッグで登録)
+          </div>
           <div className="hud-settings-row">
-            <button type="button" onClick={onOpenVRM}>
-              VRMを開く
-            </button>
-            <button type="button" onClick={() => void dispatch?.('/camera toggle')}>
-              カメラ追従: {cameraFollow ? 'ON' : 'OFF'} (Y)
-            </button>
-            <button type="button" onClick={() => void dispatch?.('/camera snap')}>
-              カメラをキャラへ
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                void clearCachedVRM().then(() =>
-                  useAppStore.getState().setStatus('キャッシュしたVRMを削除しました'),
-                )
-              }
-            >
-              VRMキャッシュを削除
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setHudEditMode(true)
-                setSettingsOpen(false)
-              }}
-            >
-              HUDレイアウト編集
-            </button>
+            {SETTINGS_ACTIONS.map((action) => (
+              <PaletteItem
+                key={action.command}
+                slot={action}
+                onActivate={() => {
+                  // HUD編集は設定ウィンドウが被ったままだと編集できないので閉じる
+                  if (action.command === '/hud edit') setSettingsOpen(false)
+                  void dispatch?.(action.command)
+                }}
+              />
+            ))}
           </div>
         </div>
         <MacroEditor game={game} />
         <div className="hud-settings-section hud-settings-hints">
-          <div>右クリック: 移動 / ホイール: ズーム / Space: ジャンプ / Esc: メニュー</div>
+          <div>右クリック: 移動 / ホイール: ズーム / Esc: メニュー</div>
           <div>
-            1〜9,0,-,^:
+            1〜9,0,Space,Enter:
             ホットバー(コマンドパレット(/palette)からドラッグで割当、スロット間はドラッグで入替)
           </div>
           <div>
             HUDレイアウト編集(/hud
             edit)で要素の移動、ホットバーの追加・削除、右クリックで非表示・キー割当ができます
           </div>
-          <div>Y: カメラ追従/固定 / 固定中は画面端で視点スクロール</div>
-          <div>Enter: チャット入力 / コマンドは「/」始まり(/help で一覧)</div>
+          <div>カメラ固定中は画面端で視点スクロール(/camera で切替)</div>
+          <div>コマンドは「/」始まり(/help で一覧)</div>
           <div>.vrm(アバター) .vrma/.fbx(モーション)をドロップで読み込み</div>
           <div>jump/slash/shoot/walk/idle の名前のモーションは対応アクションを差し替えます</div>
         </div>

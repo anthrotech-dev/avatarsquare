@@ -9,6 +9,7 @@ export function ChatWindow() {
   const chatLog = useAppStore((s) => s.chatLog)
   const dispatch = useAppStore((s) => s.dispatch)
   const appendChat = useAppStore((s) => s.appendChat)
+  const chatFocusVersion = useAppStore((s) => s.chatFocusVersion)
   const [input, setInput] = useState('')
   const logRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -19,19 +20,10 @@ export function ChatWindow() {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
   }, [chatLog])
 
-  // Enterで入力欄にフォーカス(入力中・HUD編集モード中でなければ)
+  // /chatコマンド(デフォルトはEnterキー割当)からのフォーカス要求
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Enter') return
-      if (useAppStore.getState().hudEditMode) return
-      const target = event.target
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
-      event.preventDefault()
-      inputRef.current?.focus()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+    if (chatFocusVersion > 0) inputRef.current?.focus()
+  }, [chatFocusVersion])
 
   const submit = () => {
     const line = input.trim()

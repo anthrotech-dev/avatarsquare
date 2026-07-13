@@ -242,6 +242,30 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       },
     },
     {
+      name: 'chat',
+      description: 'チャット入力にフォーカスする',
+      execute(ctx) {
+        ctx.api.focusChat()
+      },
+    },
+    {
+      name: 'vrm',
+      description: 'VRMファイルを開く/キャッシュを削除する',
+      usage: '/vrm <open|clear>',
+      execute(ctx, args) {
+        switch (args[0]) {
+          case 'open':
+            ctx.api.openVrmPicker()
+            break
+          case 'clear':
+            ctx.api.clearVrmCache()
+            break
+          default:
+            ctx.out.error('使い方: /vrm <open|clear>')
+        }
+      },
+    },
+    {
       name: 'help',
       description: 'コマンド一覧・使い方を表示する',
       usage: '/help [name]',

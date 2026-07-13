@@ -65,6 +65,10 @@ interface AppState {
   chatLog: ChatEntry[]
   /** マクロ一覧の更新通知(MacroStore.onChangeから) */
   macrosVersion: number
+  /** /chatコマンドからのフォーカス要求。ChatWindowが購読する */
+  chatFocusVersion: number
+  /** /vrm openコマンドからのファイル選択要求。Appが購読する */
+  vrmPickerVersion: number
   settingsOpen: boolean
   /** HUD要素のカスタム配置(キーが無い要素はデフォルト位置) */
   hudLayout: HudLayout
@@ -92,6 +96,8 @@ interface AppState {
   removeHotbar: (seq: number) => void
   appendChat: (entry: Omit<ChatEntry, 'id'>) => void
   bumpMacros: () => void
+  requestChatFocus: () => void
+  requestVrmPicker: () => void
   setSettingsOpen: (settingsOpen: boolean) => void
   setHudPosition: (id: HudElementId, pos: HudPosition | null) => void
   setHudVisibility: (id: HudElementId, visible: boolean) => void
@@ -123,6 +129,8 @@ export const useAppStore = create<AppState>((set) => ({
   hotbars: loadHotbars(),
   chatLog: [],
   macrosVersion: 0,
+  chatFocusVersion: 0,
+  vrmPickerVersion: 0,
   settingsOpen: false,
   hudLayout: loadHudLayout(),
   hudVisibility: loadHudVisibility(),
@@ -202,6 +210,8 @@ export const useAppStore = create<AppState>((set) => ({
       chatLog: [...state.chatLog, { ...entry, id: chatId++ }].slice(-CHAT_LOG_LIMIT),
     })),
   bumpMacros: () => set((state) => ({ macrosVersion: state.macrosVersion + 1 })),
+  requestChatFocus: () => set((state) => ({ chatFocusVersion: state.chatFocusVersion + 1 })),
+  requestVrmPicker: () => set((state) => ({ vrmPickerVersion: state.vrmPickerVersion + 1 })),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setHudPosition: (id, pos) =>
     set((state) => {

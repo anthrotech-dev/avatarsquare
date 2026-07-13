@@ -12,15 +12,12 @@ export interface SlotKeybind {
 
 /** ゲーム側で固定用途に使っているキー。修飾なしで割り当てると衝突警告を出す */
 export const RESERVED_KEYS: Array<{ code: string; label: string }> = [
-  { code: 'Space', label: 'ジャンプ' },
-  { code: 'KeyY', label: 'カメラ切替' },
-  { code: 'Enter', label: 'チャット入力' },
   { code: 'Escape', label: 'キャンセル操作' },
 ]
 
 const plain = (code: string): SlotKeybind => ({ code, shift: false, ctrl: false, alt: false })
 
-/** 12スロット分。数字列1〜9,0の続きとして-と^(Minus/Equal) */
+/** 12スロット分。数字列1〜9,0のあとはSpace(ジャンプ)とEnter(チャット入力)が入る */
 export const DEFAULT_KEYBINDS: (SlotKeybind | null)[] = [
   plain('Digit1'),
   plain('Digit2'),
@@ -32,8 +29,8 @@ export const DEFAULT_KEYBINDS: (SlotKeybind | null)[] = [
   plain('Digit8'),
   plain('Digit9'),
   plain('Digit0'),
-  plain('Minus'),
-  plain('Equal'),
+  plain('Space'),
+  plain('Enter'),
 ]
 
 export function isKeybind(value: unknown): value is SlotKeybind {
@@ -54,6 +51,7 @@ export function formatKeybind(bind: SlotKeybind | null): string {
   else if (key.startsWith('Key')) key = key.slice(3)
   else if (key.startsWith('Numpad')) key = `N${key.slice(6)}`
   else if (key === 'Space') key = 'Spc'
+  else if (key === 'Enter') key = 'Ent'
   else if (key === 'Minus') key = '-'
   else if (key === 'Equal') key = '^'
   const mods = `${bind.ctrl ? 'C+' : ''}${bind.alt ? 'A+' : ''}${bind.shift ? 'S+' : ''}`

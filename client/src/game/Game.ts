@@ -334,6 +334,13 @@ export class Game {
     resetHudLayout: () => useAppStore.getState().resetHudLayout(),
     openSettings: () => useAppStore.getState().setSettingsOpen(true),
     openPalette: () => useAppStore.getState().setPaletteOpen(true),
+    focusChat: () => useAppStore.getState().requestChatFocus(),
+    openVrmPicker: () => useAppStore.getState().requestVrmPicker(),
+    clearVrmCache: () => {
+      void clearCachedVRM().then(() =>
+        useAppStore.getState().setStatus('キャッシュしたVRMを削除しました'),
+      )
+    },
   }
 
   /** A*経路探索して移動を開始する。到達不能ならfalse */
@@ -473,12 +480,8 @@ export class Game {
       }
     }
 
-    if (event.code === 'Space') {
-      event.preventDefault()
-      void this.dispatch('/jump')
-    } else if (event.code === 'KeyY') {
-      void this.dispatch('/camera toggle')
-    }
+    // Space(ジャンプ)やEnter(チャット入力)も固定キーではなく
+    // デフォルトホットバーのキー割当として上のループで発火する
   }
 
   /** カメラ追従(on) / カメラ固定(off)を切り替える。追従にした瞬間はスナップする */

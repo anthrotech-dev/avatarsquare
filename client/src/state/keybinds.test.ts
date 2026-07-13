@@ -17,12 +17,12 @@ const bind = (code: string, mods: Partial<SlotKeybind> = {}): SlotKeybind => ({
 })
 
 describe('DEFAULT_KEYBINDS', () => {
-  it('12スロット分。1〜9,0,-,^の並び', () => {
+  it('12スロット分。1〜9,0,Space,Enterの並び', () => {
     expect(DEFAULT_KEYBINDS).toHaveLength(HOTBAR_SIZE)
     expect(DEFAULT_KEYBINDS[0]?.code).toBe('Digit1')
     expect(DEFAULT_KEYBINDS[9]?.code).toBe('Digit0')
-    expect(DEFAULT_KEYBINDS[10]?.code).toBe('Minus')
-    expect(DEFAULT_KEYBINDS[11]?.code).toBe('Equal')
+    expect(DEFAULT_KEYBINDS[10]?.code).toBe('Space')
+    expect(DEFAULT_KEYBINDS[11]?.code).toBe('Enter')
   })
 })
 
@@ -63,13 +63,23 @@ describe('findKeybindConflicts', () => {
     { seq: 2, keys: [bind('KeyQ'), null] },
   ]
 
-  it('予約キーは修飾なしのみ警告', () => {
-    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Space')).reserved).toBe(
-      'ジャンプ',
+  it('予約キー(Escapeのみ)は修飾なしのみ警告', () => {
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Escape')).reserved).toBe(
+      'キャンセル操作',
     )
     expect(
-      findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Space', { shift: true })).reserved,
+      findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Escape', { shift: true })).reserved,
     ).toBeNull()
+    // Space/Enterはホットバー割当なので予約扱いではなく重複として検出される
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Space')).reserved).toBeNull()
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Space')).conflict).toEqual({
+      seq: 0,
+      index: 10,
+    })
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Enter')).conflict).toEqual({
+      seq: 0,
+      index: 11,
+    })
   })
 
   it('同一ホットバー内の重複を検出する(自分自身は除外)', () => {

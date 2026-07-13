@@ -29,6 +29,12 @@ export interface GameCommandAPI {
   openSettings(): void
   /** コマンドパレットを開く */
   openPalette(): void
+  /** チャット入力欄にフォーカスする */
+  focusChat(): void
+  /** VRMファイル選択ダイアログを開く */
+  openVrmPicker(): void
+  /** キャッシュ済みVRMを削除する */
+  clearVrmCache(): void
 }
 
 export interface CommandOutput {

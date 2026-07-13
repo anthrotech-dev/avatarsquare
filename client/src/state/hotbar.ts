@@ -31,8 +31,8 @@ const LEGACY_KEYS_KEY = 'avatarsquare:hotbarKeys'
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
 
+/** Spaceのジャンプ・Enterのチャット入力も固定キーではなくホットバー割当(index 10,11)で発火する */
 export const DEFAULT_HOTBAR: (HotbarSlot | null)[] = [
-  { command: '/jump', label: 'ジャンプ' },
   { command: '/attack', label: '斬撃' },
   { command: '/shoot', label: '射撃' },
   { command: '/emote VRMA_02', label: '挨拶' },
@@ -41,9 +41,10 @@ export const DEFAULT_HOTBAR: (HotbarSlot | null)[] = [
   { command: '/emote VRMA_07', label: '屈伸' },
   null,
   null,
+  null,
   { command: '/settings', label: '設定' },
-  null,
-  null,
+  { command: '/jump', label: 'ジャンプ' },
+  { command: '/chat', label: 'チャット' },
 ]
 
 function isSlot(value: unknown): value is HotbarSlot {

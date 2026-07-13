@@ -22,6 +22,9 @@ const ACTIONS: HotbarSlot[] = [
   { command: '/zoom 20', label: 'ズーム引き' },
   { command: '/hud edit', label: 'HUD編集' },
   { command: '/settings', label: '設定' },
+  { command: '/chat', label: 'チャット入力' },
+  { command: '/vrm open', label: 'VRMを開く' },
+  { command: '/vrm clear', label: 'VRMキャッシュ削除' },
   { command: '/help', label: 'ヘルプ' },
 ]
 

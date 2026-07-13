@@ -25,7 +25,13 @@ export function App() {
   const hotbars = useAppStore((s) => s.hotbars)
   const setHudDetailOpen = useAppStore((s) => s.setHudDetailOpen)
   const removeHotbar = useAppStore((s) => s.removeHotbar)
+  const vrmPickerVersion = useAppStore((s) => s.vrmPickerVersion)
   useEscMenu()
+
+  // /vrm openコマンドからのファイル選択要求
+  useEffect(() => {
+    if (vrmPickerVersion > 0) fileInputRef.current?.click()
+  }, [vrmPickerVersion])
 
   useEffect(() => {
     const container = containerRef.current
@@ -94,9 +100,7 @@ export function App() {
             <Hotbar seq={h.seq} />
           </HudElement>
         ))}
-      {settingsOpen && (
-        <SettingsWindow game={game} onOpenVRM={() => fileInputRef.current?.click()} />
-      )}
+      {settingsOpen && <SettingsWindow game={game} />}
       {menuOpen && <MainMenu />}
       {paletteOpen && <CommandPalette macroStore={game?.macroStore ?? null} />}
       {hudEditMode && <HudEditBanner />}
