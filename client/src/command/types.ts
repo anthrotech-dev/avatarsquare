@@ -31,6 +31,8 @@ export interface GameCommandAPI {
   openSettings(): void
   /** コマンドパレットを開く */
   openPalette(): void
+  /** プレイヤー一覧ウィンドウを開く */
+  openPlayers(): void
   /** チャット入力欄にフォーカスする */
   focusChat(): void
   /** VRMファイル選択ダイアログを開く */

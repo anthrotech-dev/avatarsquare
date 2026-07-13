@@ -9,6 +9,7 @@ import { HotbarConfig } from './hud/HotbarConfig'
 import { HudEditBanner } from './hud/HudEditBanner'
 import { HudElement } from './hud/HudElement'
 import { MainMenu, useEscMenu } from './hud/MainMenu'
+import { PlayersWindow } from './hud/PlayersWindow'
 import { SettingsWindow } from './hud/SettingsPanel'
 import { StatusPanel } from './hud/StatusPanel'
 
@@ -22,6 +23,7 @@ export function App() {
   const hudDetailOpen = useAppStore((s) => s.hudDetailOpen)
   const menuOpen = useAppStore((s) => s.menuOpen)
   const settingsOpen = useAppStore((s) => s.settingsOpen)
+  const playersOpen = useAppStore((s) => s.playersOpen)
   const hotbars = useAppStore((s) => s.hotbars)
   const setHudDetailOpen = useAppStore((s) => s.setHudDetailOpen)
   const removeHotbar = useAppStore((s) => s.removeHotbar)
@@ -101,6 +103,7 @@ export function App() {
           </HudElement>
         ))}
       {settingsOpen && <SettingsWindow game={game} />}
+      {playersOpen && <PlayersWindow />}
       {menuOpen && <MainMenu />}
       {paletteOpen && <CommandPalette macroStore={game?.macroStore ?? null} />}
       {hudEditMode && <HudEditBanner />}

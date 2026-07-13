@@ -157,13 +157,16 @@ export class Game {
     this.net.disconnect()
     this.remotes.clear()
     useAppStore.getState().setPeers(0)
+    useAppStore.getState().clearPlayers()
     await this.connectNet()
   }
 
   private async connectNet(): Promise<void> {
-    const { setNetStatus, setPeers } = useAppStore.getState()
+    const { setNetStatus, setPeers, setSelfId, upsertPlayer, removePlayer } =
+      useAppStore.getState()
     const identity = `user-${Math.random().toString(36).slice(2, 8)}`
     this.identity = identity
+    setSelfId(identity)
     // ?room=xxx で入室先を切り替えられる(既定はsquare)
     const roomName = new URLSearchParams(location.search).get('room') ?? ROOM_NAME
     setNetStatus('接続中...')
@@ -174,12 +177,16 @@ export class Game {
       await net.connect(roomName, identity, this.streamer.captureTrack(), {
         onRemoteVideo: (id, video) => this.remotes.setVideo(id, video),
         onRemoteMessage: (id, message) => {
+          // 入室済みの相手からのメッセージでプレイヤー一覧に載せる(joinイベントは新規参加者のみのため)
+          upsertPlayer(id)
           if (message.t === 'pos') this.remotes.applyMessage(id, message)
           // エフェクトは補間中のリモート位置ではなく、送信側の実行時座標を原点にする
           if (message.t === 'act') this.spawnActionEffect(message.name, message)
           // 受信名は相手のクライアント改造に備えてこちらでもサニタイズする
           if (message.t === 'profile' && typeof message.name === 'string') {
-            this.remotes.setName(id, sanitizeName(message.name))
+            const name = sanitizeName(message.name)
+            this.remotes.setName(id, name)
+            upsertPlayer(id, name)
           }
           // 本文も送信側と同様にサニタイズする(相手のクライアント改造対策)
           if (message.t === 'chat' && typeof message.text === 'string') {
@@ -193,10 +200,14 @@ export class Game {
         },
         // 後から入ってきた人は過去のprofileを受け取れないため、本人にだけ再送する
         onPeerJoined: (id) => {
+          upsertPlayer(id)
           const name = this.displayName()
           if (name) this.net.sendReliable({ t: 'profile', name }, [id])
         },
-        onRemoteLeft: (id) => this.remotes.remove(id),
+        onRemoteLeft: (id) => {
+          this.remotes.remove(id)
+          removePlayer(id)
+        },
         onPeersChanged: (count) => setPeers(count),
       })
       // dispose済み・別の接続に置き換わった後に完了した場合は切断する
@@ -335,6 +346,7 @@ export class Game {
     resetHudLayout: () => useAppStore.getState().resetHudLayout(),
     openSettings: () => useAppStore.getState().setSettingsOpen(true),
     openPalette: () => useAppStore.getState().setPaletteOpen(true),
+    openPlayers: () => useAppStore.getState().setPlayersOpen(true),
     focusChat: () => useAppStore.getState().requestChatFocus(),
     openVrmPicker: () => useAppStore.getState().requestVrmPicker(),
     clearVrmCache: () => {

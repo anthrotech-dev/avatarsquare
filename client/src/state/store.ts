@@ -30,6 +30,12 @@ function loadPlayerName(): string {
   }
 }
 
+/** 同じ部屋にいるリモートプレイヤー。nameはprofile受信まで空 */
+export interface PlayerEntry {
+  id: string
+  name: string
+}
+
 export interface ChatEntry {
   id: number
   kind: 'system' | 'error' | 'echo' | 'chat'
@@ -55,6 +61,10 @@ interface AppState {
   status: string
   netStatus: string
   peers: number
+  /** 自分の接続identity(未接続はnull)。プレイヤー一覧の「自分」表示に使う */
+  selfId: string | null
+  /** 同じ部屋のリモートプレイヤー一覧 */
+  players: PlayerEntry[]
   cameraFollow: boolean
   /** コマンド実行の入口。Gameが接続時に注入する */
   dispatch: ((line: string) => Promise<void>) | null
@@ -81,7 +91,14 @@ interface AppState {
   paletteOpen: boolean
   /** Escで開くメインメニュー */
   menuOpen: boolean
+  /** プレイヤー一覧ウィンドウ */
+  playersOpen: boolean
   setAvatarName: (name: string | null) => void
+  setSelfId: (selfId: string | null) => void
+  /** プレイヤーを登録/更新する。nameを省略すると既存の名前を保つ(いなければ空) */
+  upsertPlayer: (id: string, name?: string) => void
+  removePlayer: (id: string) => void
+  clearPlayers: () => void
   setPlayerName: (name: string) => void
   setStatus: (status: string) => void
   setNetStatus: (netStatus: string) => void
@@ -106,6 +123,7 @@ interface AppState {
   setHudDetailOpen: (seq: number | null) => void
   setPaletteOpen: (paletteOpen: boolean) => void
   setMenuOpen: (menuOpen: boolean) => void
+  setPlayersOpen: (playersOpen: boolean) => void
 }
 
 /** seqのホットバーだけをupdaterで差し替えた新しい配列を返す */
@@ -123,6 +141,8 @@ export const useAppStore = create<AppState>((set) => ({
   status: '',
   netStatus: 'オフライン',
   peers: 0,
+  selfId: null,
+  players: [],
   cameraFollow: true,
   dispatch: null,
   position: { x: 0, z: 0 },
@@ -138,7 +158,20 @@ export const useAppStore = create<AppState>((set) => ({
   hudDetailOpen: null,
   paletteOpen: false,
   menuOpen: false,
+  playersOpen: false,
   setAvatarName: (avatarName) => set({ avatarName }),
+  setSelfId: (selfId) => set({ selfId }),
+  upsertPlayer: (id, name) =>
+    set((state) => {
+      const existing = state.players.find((p) => p.id === id)
+      // posメッセージのたびに呼ばれるため、変化がなければ再レンダを起こさない
+      if (existing && (name === undefined || existing.name === name)) return {}
+      if (!existing) return { players: [...state.players, { id, name: name ?? '' }] }
+      return { players: state.players.map((p) => (p.id === id ? { ...p, name: name ?? '' } : p)) }
+    }),
+  removePlayer: (id) =>
+    set((state) => ({ players: state.players.filter((p) => p.id !== id) })),
+  clearPlayers: () => set({ players: [] }),
   setPlayerName: (name) => {
     const playerName = sanitizeName(name)
     try {
@@ -239,4 +272,5 @@ export const useAppStore = create<AppState>((set) => ({
   setHudDetailOpen: (hudDetailOpen) => set({ hudDetailOpen }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setMenuOpen: (menuOpen) => set({ menuOpen }),
+  setPlayersOpen: (playersOpen) => set({ playersOpen }),
 }))

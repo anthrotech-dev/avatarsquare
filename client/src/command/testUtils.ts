@@ -27,6 +27,7 @@ export function makeTestContext(overrides: Partial<GameCommandAPI> = {}): {
     resetHudLayout: vi.fn(),
     openSettings: vi.fn(),
     openPalette: vi.fn(),
+    openPlayers: vi.fn(),
     focusChat: vi.fn(),
     openVrmPicker: vi.fn(),
     clearVrmCache: vi.fn(),

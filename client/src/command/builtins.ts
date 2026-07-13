@@ -258,6 +258,14 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       },
     },
     {
+      name: 'players',
+      aliases: ['who'],
+      description: 'プレイヤー一覧を開く',
+      execute(ctx) {
+        ctx.api.openPlayers()
+      },
+    },
+    {
       name: 'chat',
       description: 'チャット入力にフォーカスする',
       execute(ctx) {

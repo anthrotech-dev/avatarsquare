@@ -452,6 +452,47 @@ body,
   font-size: 11px;
 }
 
+/* --- プレイヤー一覧 --- */
+
+.hud-players {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-players-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(45, 55, 72, 0.6);
+}
+
+.hud-players-name {
+  font-size: 13px;
+}
+
+.hud-players-id {
+  color: #a8b2c2;
+  font-size: 11px;
+}
+
+.hud-players-self {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #2f4a75;
+  color: #cfe0ff;
+  font-size: 11px;
+}
+
+.hud-players-empty {
+  color: #a8b2c2;
+  font-size: 12px;
+  padding: 4px 2px;
+}
+
 /* --- 設定 --- */
 
 .hud-settings-content {

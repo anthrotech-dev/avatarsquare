@@ -30,6 +30,7 @@ export function useEscMenu(): void {
 /** 各項目はコマンド。クリックで実行、ドラッグでホットバーへ登録できる */
 const MENU_ITEMS: HotbarSlot[] = [
   { command: '/palette', label: 'コマンドパレット' },
+  { command: '/players', label: 'プレイヤー一覧' },
   { command: '/hud edit', label: 'HUDレイアウト編集' },
   { command: '/settings', label: '設定' },
 ]
