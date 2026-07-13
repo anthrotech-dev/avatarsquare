@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildNavGrid } from './MapDef'
+import { buildNavGrid, SPAWN } from './MapDef'
 import { NavGrid } from './pathfinding'
 
 function makeGrid(block?: (x: number, z: number) => boolean): NavGrid {
@@ -55,14 +55,14 @@ describe('NavGrid.findPath', () => {
 
   it('実マップのグリッドでスポーン地点から各所へ到達できる', () => {
     const grid = buildNavGrid()
-    expect(grid.isWalkableAt(0, 0)).toBe(true)
+    expect(grid.isWalkableAt(SPAWN.x, SPAWN.z)).toBe(true)
     for (const goal of [
-      { x: -25, z: -25 },
-      { x: 25, z: 25 },
-      { x: -25, z: 25 },
-      { x: 25, z: -25 },
+      { x: -25, z: -25 }, // 森の奥
+      { x: 25, z: 25 }, // 海(最寄りの砂浜に調整される)
+      { x: -25, z: 25 }, // 草原の隅
+      { x: 14, z: -10 }, // 砂浜
     ]) {
-      expect(grid.findPath({ x: 0, z: 0 }, goal)).not.toBeNull()
+      expect(grid.findPath(SPAWN, goal)).not.toBeNull()
     }
   })
 })

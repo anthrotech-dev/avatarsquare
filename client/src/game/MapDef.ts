@@ -5,6 +5,29 @@ export const NAV_CELL = 0.5
 /** アバターの半径ぶん障害物を膨らませて経路に余白を持たせる */
 const NAV_MARGIN = 0.35
 
+/**
+ * マップ構成: 中央にレンガ敷きの広場(噴水付き)、西〜南に草原、
+ * 北に森、東に砂浜と海がコンパクトにまとまっている。
+ */
+
+/** アバターの初期位置(広場内、噴水を避けた位置) */
+export const SPAWN = { x: 3, z: 5 }
+
+/** 中央のレンガ敷き広場 */
+export const PLAZA = { x: 0, z: 0, r: 11 }
+
+/** 広場中央の噴水(通行不可) */
+export const FOUNTAIN = { x: 0, z: 0, r: 2.4 }
+
+/** このzより北側は森(見た目のゾーン。通行は木の間なら可能) */
+export const FOREST_Z = -13
+
+/** 海岸線。このxより東は海(通行不可)。砂浜はこの手前4.5ユニット */
+export function coastX(z: number): number {
+  return 17 + 2.5 * Math.sin(z * 0.11)
+}
+export const BEACH_WIDTH = 4.5
+
 export type Obstacle =
   | { kind: 'circle'; x: number; z: number; r: number }
   | { kind: 'rect'; x: number; z: number; w: number; d: number }
@@ -16,51 +39,61 @@ export interface PropDef {
   scale: number
 }
 
-/** 池。地面テクスチャに直接描き込み、通行不可にする */
-export const POND = { x: 10, z: 5, rx: 6, rz: 4.5 }
+export type TreeKind = 'round' | 'pine'
 
-/** 生け垣。ブッシュのスプライトを並べて描画し、壁として通行を塞ぐ */
-export const HEDGES: Array<{ x: number; z: number; w: number; d: number }> = [
-  { x: -9, z: -4, w: 14, d: 1.2 },
-  { x: 4, z: 12, w: 1.2, d: 10 },
-]
-
-export const TREES: PropDef[] = [
-  { x: -14, z: 8, scale: 1.2 },
-  { x: -20, z: -12, scale: 1.4 },
-  { x: -4, z: -16, scale: 1.1 },
-  { x: 12, z: -12, scale: 1.3 },
-  { x: 20, z: -2, scale: 1.0 },
-  { x: 18, z: 14, scale: 1.2 },
-  { x: -22, z: 16, scale: 1.0 },
-  { x: -2, z: 20, scale: 1.3 },
-  { x: 8, z: -20, scale: 0.9 },
-  { x: 24, z: -16, scale: 1.1 },
+export const TREES: Array<PropDef & { kind: TreeKind }> = [
+  // 北の森(針葉樹)
+  { x: -22, z: -16, scale: 1.3, kind: 'pine' },
+  { x: -18, z: -21, scale: 1.1, kind: 'pine' },
+  { x: -13, z: -17, scale: 1.4, kind: 'pine' },
+  { x: -9, z: -22, scale: 1.2, kind: 'pine' },
+  { x: -4, z: -16, scale: 1.3, kind: 'pine' },
+  { x: 1, z: -21, scale: 1.1, kind: 'pine' },
+  { x: 6, z: -17, scale: 1.2, kind: 'pine' },
+  { x: 10, z: -23, scale: 1.0, kind: 'pine' },
+  { x: -20, z: -26, scale: 1.2, kind: 'pine' },
+  { x: -14, z: -25, scale: 1.0, kind: 'pine' },
+  { x: -7, z: -27, scale: 1.3, kind: 'pine' },
+  { x: 0, z: -26, scale: 1.2, kind: 'pine' },
+  { x: -25, z: -22, scale: 1.0, kind: 'pine' },
+  { x: 5, z: -26, scale: 1.4, kind: 'pine' },
+  { x: -17, z: -14, scale: 0.9, kind: 'round' },
+  { x: 2, z: -14, scale: 0.9, kind: 'round' },
+  // 草原に点在する広葉樹
+  { x: -24, z: 6, scale: 1.2, kind: 'round' },
+  { x: -18, z: 14, scale: 1.0, kind: 'round' },
+  { x: -25, z: 22, scale: 1.3, kind: 'round' },
+  { x: -12, z: 24, scale: 1.1, kind: 'round' },
+  { x: -3, z: 20, scale: 1.0, kind: 'round' },
+  { x: 8, z: 22, scale: 1.2, kind: 'round' },
+  { x: 14, z: 12, scale: 0.9, kind: 'round' },
+  { x: 9, z: -9, scale: 1.0, kind: 'round' },
 ]
 
 export const ROCKS: PropDef[] = [
-  { x: -6, z: 4, scale: 1.2 },
-  { x: 14, z: -4, scale: 0.9 },
-  { x: -18, z: 0, scale: 1.0 },
-  { x: 2, z: -8, scale: 0.8 },
-  { x: -12, z: 18, scale: 1.4 },
-  { x: 22, z: 6, scale: 1.0 },
+  { x: 12, z: -14, scale: 0.9 }, // 砂浜の岩
+  { x: -20, z: -8, scale: 1.2 },
+  { x: 12, z: 16, scale: 0.8 },
+  { x: -15, z: 3, scale: 1.0 },
+]
+
+/** 広場の縁を飾るブッシュ(東と南西の出入り口は空けてある) */
+export const BUSHES: PropDef[] = [
+  { x: 9.2, z: 7.7, scale: 1.0 },
+  { x: 0, z: 12, scale: 1.1 },
+  { x: -12, z: 0, scale: 1.0 },
+  { x: -9.2, z: -7.7, scale: 1.0 },
+  { x: -4.1, z: -11.3, scale: 1.1 },
+  { x: 4.1, z: -11.3, scale: 1.0 },
+  { x: 9.2, z: -7.7, scale: 1.1 },
 ]
 
 export function getObstacles(margin = 0): Obstacle[] {
   return [
-    { kind: 'ellipse', x: POND.x, z: POND.z, rx: POND.rx + margin, rz: POND.rz + margin },
-    ...HEDGES.map(
-      (h): Obstacle => ({
-        kind: 'rect',
-        x: h.x,
-        z: h.z,
-        w: h.w + margin * 2,
-        d: h.d + margin * 2,
-      }),
-    ),
+    { kind: 'circle', x: FOUNTAIN.x, z: FOUNTAIN.z, r: FOUNTAIN.r + margin },
     ...TREES.map((t): Obstacle => ({ kind: 'circle', x: t.x, z: t.z, r: 0.55 * t.scale + margin })),
     ...ROCKS.map((r): Obstacle => ({ kind: 'circle', x: r.x, z: r.z, r: 0.7 * r.scale + margin })),
+    ...BUSHES.map((b): Obstacle => ({ kind: 'circle', x: b.x, z: b.z, r: 0.6 * b.scale + margin })),
   ]
 }
 
@@ -94,7 +127,10 @@ export function buildNavGrid(): NavGrid {
   const obstacles = getObstacles(NAV_MARGIN)
   const edge = MAP_SIZE / 2 - 1
   grid.blockWhere(
-    (x, z) => Math.max(Math.abs(x), Math.abs(z)) > edge || hitsObstacle(x, z, obstacles),
+    (x, z) =>
+      Math.max(Math.abs(x), Math.abs(z)) > edge ||
+      x > coastX(z) - 0.3 || // 海
+      hitsObstacle(x, z, obstacles),
   )
   return grid
 }

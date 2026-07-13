@@ -3,4 +3,7 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+      allowedHosts: ['avatar-square-web.tunnel.anthrotech.dev']
+  }
 })

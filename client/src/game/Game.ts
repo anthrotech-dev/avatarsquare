@@ -6,7 +6,7 @@ import { AVATAR_LAYER } from '../avatar/captureSpec'
 import { NetClient } from '../net/NetClient'
 import { useAppStore } from '../state/store'
 import { buildMap } from './GroundMap'
-import { buildNavGrid } from './MapDef'
+import { buildNavGrid, SPAWN } from './MapDef'
 import type { NavGrid } from './pathfinding'
 import { RemoteAvatars } from './RemoteAvatars'
 
@@ -68,6 +68,7 @@ export class Game {
 
     this.setupLights()
     this.avatar = new Avatar(this.scene)
+    this.avatar.position.set(SPAWN.x, 0, SPAWN.z)
     this.remotes = new RemoteAvatars(this.scene)
 
     this.focus.copy(this.avatar.position)
