@@ -5,7 +5,9 @@
 
 // WebRTCのメディア(UDP/TCP)が通る必要があるためHTTPトンネルでは開発できない。
 // 開発サーバー上でLiveKit+トークンAPIを直接ポート公開する構成が既定。
-export const DEFAULT_ENDPOINT = 'http://tunnel.anthrotech.dev:8787/token'
+// 注意: .dev TLDはHSTSプリロード対象でブラウザがhttp/wsを強制的にhttps/wssへ
+// 昇格するため、tunnel.anthrotech.devは平文では使えない。TLSを整えるまでIP直指定。
+export const DEFAULT_ENDPOINT = 'http://162.43.91.112:8787/token'
 
 const DEFAULT_PORT = '8787'
 const STORAGE_KEY = 'avatarsquare:endpoint'
