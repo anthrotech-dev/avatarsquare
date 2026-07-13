@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# ローカルテスト用のアバター・モーション素材はコミットしない
+*.vrm
+*.vrma
+*.fbx
+*:Zone.Identifier
+client/public/animations/*
+!client/public/animations/README.txt
