@@ -13,7 +13,7 @@ import { RemoteAvatars } from './RemoteAvatars'
 // 平行投影の固定アングル(LoL風の2Dルック)。仰角 約42°
 const CAMERA_DIR = new THREE.Vector3(0, 0.9, 1).normalize()
 const CAMERA_DISTANCE = 60
-const ZOOM_MIN = 3 // 画面半分の高さ(ワールド単位)。小さいほど寄る
+const ZOOM_MIN = 0.7 // 画面半分の高さ(ワールド単位)。小さいほど寄る(顔が見えるくらい)
 const ZOOM_MAX = 32 // マップ全体が見渡せる
 const ZOOM_DEFAULT = 9
 const MARKER_LIFETIME = 0.6 // 秒
