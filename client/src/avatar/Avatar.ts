@@ -2,14 +2,17 @@ import type { VRM } from '@pixiv/three-vrm'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { Nameplate } from '../game/nameplate'
+import { BUBBLE_WORLD_H, SpeechBubble } from '../game/speechBubble'
 import { AnimationController } from './AnimationController'
 import {
   type AnimationFileKind,
   loadAnimationClip,
   looksLikeAnimationFile,
 } from './animationLoaders'
-import { buildIdleClip, buildWalkClip } from './builtinClips'
+import { buildActionClips, buildIdleClip, buildWalkClip } from './builtinClips'
 import { AVATAR_LAYER } from './captureSpec'
+import { isAirborne, JUMP_SPEED, stepVertical } from './verticalMotion'
 
 export const WALK_SPEED = 3.2 // m/s
 const TURN_SPEED = 12 // 大きいほど旋回が速い
@@ -25,17 +28,22 @@ export class Avatar {
   private vrm: VRM | null = null
   private animation: AnimationController | null = null
   private placeholder: THREE.Group
+  private readonly shadow: THREE.Mesh
+  private nameplate: Nameplate | null = null
+  private bubble: SpeechBubble | null = null
   private path: THREE.Vector3[] = []
   private pathIndex = 0
   private moving = false
   private walkPhase = 0
+  private vy = 0
 
   constructor(scene: THREE.Scene) {
     this.placeholder = buildPlaceholder()
     // アバター本体は配信キャプチャ用レイヤーにも登録する(ブロブシャドウは除く)
     this.placeholder.traverse((obj) => obj.layers.enable(AVATAR_LAYER))
     this.root.add(this.placeholder)
-    this.root.add(buildBlobShadow())
+    this.shadow = buildBlobShadow()
+    this.root.add(this.shadow)
     scene.add(this.root)
   }
 
@@ -58,6 +66,60 @@ export class Avatar {
   setPath(points: THREE.Vector3[]): void {
     this.path = points
     this.pathIndex = 0
+  }
+
+  /**
+   * 頭上のネームプレートを設定する。空文字で非表示。
+   * AVATAR_LAYERには載せない=自分の配信映像には映り込まない
+   * (相手側では相手のクライアントが描画する)。rootの子なのでジャンプに追従する。
+   */
+  setNameplate(text: string): void {
+    if (!this.nameplate) {
+      if (!text) return
+      this.nameplate = new Nameplate(text)
+      this.nameplate.sprite.position.y = 2.0
+      this.root.add(this.nameplate.sprite)
+      return
+    }
+    this.nameplate.setText(text)
+  }
+
+  /**
+   * チャット発言を頭上の吹き出しに表示する。ネームプレート同様
+   * AVATAR_LAYERには載せない=自分の配信映像には映り込まない。
+   * 吹き出しは下端基準で上に伸びるため、中心はネームプレートの上に置く。
+   */
+  say(text: string): void {
+    if (!this.bubble) {
+      this.bubble = new SpeechBubble()
+      this.bubble.sprite.position.y = 2.25 + BUBBLE_WORLD_H / 2
+      this.root.add(this.bubble.sprite)
+    }
+    this.bubble.show(text)
+  }
+
+  /** ジャンプを開始する。空中なら失敗。移動パスは中断しない */
+  jump(): boolean {
+    if (isAirborne({ y: this.root.position.y, vy: this.vy })) return false
+    this.vy = JUMP_SPEED
+    if (this.animation?.has('jump')) this.animation.playOnce('jump')
+    return true
+  }
+
+  /** 指定地点の方向へ即座に向く(対象を取るアクション用) */
+  faceTowards(x: number, z: number): void {
+    const dx = x - this.root.position.x
+    const dz = z - this.root.position.z
+    if (dx === 0 && dz === 0) return
+    this.root.rotation.y = Math.atan2(dx, dz)
+  }
+
+  /**
+   * アクション用クリップを1回再生する。
+   * VRM未読込・クリップ未登録でもthrowしない(エフェクトだけでも成立させる)。
+   */
+  playActionClip(name: string): void {
+    if (this.animation?.has(name)) this.animation.playOnce(name)
   }
 
   async loadVRM(data: ArrayBuffer): Promise<string> {
@@ -90,6 +152,7 @@ export class Avatar {
     this.animation = new AnimationController(vrm)
     this.animation.register('idle', buildIdleClip(vrm))
     this.animation.register('walk', buildWalkClip(vrm))
+    for (const [name, clip] of buildActionClips(vrm)) this.animation.register(name, clip)
     this.animation.setLocomotion('idle')
     void this.loadDefaultAnimations()
 
@@ -123,20 +186,32 @@ export class Avatar {
 
   update(delta: number): void {
     this.updateMovement(delta)
+    this.updateVertical(delta)
     if (this.animation) {
       this.animation.setLocomotion(this.moving ? 'walk' : 'idle')
       this.animation.update(delta)
     }
     if (this.placeholder.visible) this.updatePlaceholderMotion(delta)
+    this.bubble?.update(delta)
     this.vrm?.update(delta)
   }
 
-  /** public/animations/ に置かれたデフォルト素材(walk/idle)を試しに読む */
+  /** ジャンプの鉛直運動。シャドウはrootの子なので、逆オフセットで地面に残す */
+  private updateVertical(delta: number): void {
+    const step = stepVertical({ y: this.root.position.y, vy: this.vy }, delta)
+    this.root.position.y = step.y
+    this.vy = step.vy
+    this.shadow.position.y = 0.03 - step.y
+    const shrink = Math.max(0.55, 1 - step.y * 0.3)
+    this.shadow.scale.set(shrink, 0.7 * shrink, shrink)
+  }
+
+  /** public/animations/ に置かれたデフォルト素材を試しに読む */
   private async loadDefaultAnimations(): Promise<void> {
     const vrm = this.vrm
     const animation = this.animation
     if (!vrm || !animation) return
-    for (const name of ['idle', 'walk'] as const) {
+    for (const name of ['idle', 'walk', 'jump', 'slash', 'shoot'] as const) {
       for (const kind of ['vrma', 'fbx'] as const) {
         try {
           const res = await fetch(`/animations/${name}.${kind}`)

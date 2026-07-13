@@ -11,6 +11,7 @@
     "lint": "biome check src"
   },
   "dependencies": {
+    "@atlaskit/pragmatic-drag-and-drop": "^2.0.1",
     "@pixiv/three-vrm": "^3.4.0",
     "@pixiv/three-vrm-animation": "^3.5.5",
     "livekit-client": "^2.20.1",

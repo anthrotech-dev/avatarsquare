@@ -23,37 +23,55 @@ body,
   display: block;
 }
 
-.overlay {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  padding: 12px 16px;
+/* --- HUD共通 --- */
+
+.hud-status,
+.hud-chat,
+.hud-hotbar-slots,
+.hud-window {
   border-radius: 8px;
   background: rgba(20, 24, 32, 0.72);
   color: #e8ecf2;
   font-size: 13px;
-  line-height: 1.7;
+}
+
+/* HUD要素の配置アンカー。カスタム位置はinline styleで上書きされる */
+.hud-anchor {
+  position: absolute;
   pointer-events: none;
-  user-select: none;
 }
 
-.overlay h1 {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.overlay .hint {
-  color: #a8b2c2;
-}
-
-.overlay .status {
-  color: #ffd479;
-}
-
-.overlay button {
+.hud-anchor > * {
   pointer-events: auto;
-  margin-top: 6px;
+}
+
+.hud-anchor-status {
+  top: 12px;
+  left: 12px;
+}
+
+.hud-anchor-chat {
+  left: 12px;
+  bottom: 12px;
+}
+
+.hud-anchor-hotbar {
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.hud-anchor-settings {
+  top: 12px;
+  right: 12px;
+}
+
+/* 非表示要素(HUD編集モード中のみ描画される) */
+.hud-anchor.hud-hidden {
+  opacity: 0.35;
+}
+
+.game-container button {
   padding: 4px 12px;
   border: 1px solid #4a5568;
   border-radius: 6px;
@@ -63,20 +81,17 @@ body,
   cursor: pointer;
 }
 
-.overlay button:hover {
+.game-container button:hover:not(:disabled) {
   background: #3a4a5f;
 }
 
-.overlay .endpoint {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
+.game-container button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
-.overlay .endpoint input {
-  pointer-events: auto;
-  flex: 1;
-  min-width: 240px;
+.game-container input,
+.game-container textarea {
   padding: 4px 8px;
   border: 1px solid #4a5568;
   border-radius: 6px;
@@ -85,24 +100,372 @@ body,
   font-size: 12px;
 }
 
-.overlay .endpoint button {
-  margin-top: 0;
-  flex-shrink: 0;
+/* --- ステータス(左上) --- */
+
+.hud-status {
+  padding: 10px 14px;
+  line-height: 1.6;
+  pointer-events: none;
+  user-select: none;
 }
 
-.overlay .emotes {
+.hud-status-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hud-status-line {
+  color: #a8b2c2;
+  font-size: 12px;
+}
+
+.hud-status-message {
+  color: #ffd479;
+  font-size: 12px;
+}
+
+/* --- チャット(左下) --- */
+
+.hud-chat {
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 6px;
+}
+
+.hud-chat-log {
+  height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  scrollbar-width: thin;
+}
+
+.hud-chat-entry.system {
+  color: #a8d4a8;
+}
+
+.hud-chat-entry.error {
+  color: #ff9d9d;
+}
+
+.hud-chat-entry.echo {
+  color: #8fa3bd;
+}
+
+.hud-chat-entry.chat {
+  color: #f2f5fa;
+  overflow-wrap: break-word;
+}
+
+.hud-chat-from {
+  color: #ffd479;
+  font-weight: 600;
+}
+
+.hud-chat-input {
+  width: 100%;
+}
+
+/* --- ホットバー(下中央) --- */
+
+.hud-hotbar-slots {
+  display: flex;
+  gap: 5px;
+  padding: 6px;
+}
+
+.game-container button.hud-slot {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  padding: 2px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-container button.hud-slot.empty {
+  background: rgba(26, 32, 44, 0.5);
+  border-style: dashed;
+}
+
+.game-container button.hud-slot:active {
+  transform: translateY(1px);
+}
+
+.hud-slot-key {
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  font-size: 10px;
+  color: #8fa3bd;
+}
+
+.hud-slot-label {
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-all;
+  overflow: hidden;
+  max-height: 100%;
+}
+
+/* --- D&D状態 --- */
+
+.game-container button.hud-slot.drag-over {
+  border-color: #ffd479;
+  background: #4a4330;
+}
+
+.game-container button.hud-slot.dragging {
+  opacity: 0.4;
+}
+
+/* --- メインメニュー --- */
+
+.hud-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hud-menu button {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+/* --- フローティングウィンドウ --- */
+
+.hud-window {
+  position: absolute;
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+}
+
+.hud-window-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  font-weight: 600;
+  border-bottom: 1px solid #4a5568;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.hud-window-body {
+  padding: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* --- コマンドパレット --- */
+
+.hud-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hud-palette-section {
+  color: #a8b2c2;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.hud-palette-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 6px;
-  max-width: 340px;
 }
 
-.overlay .emotes button {
-  margin-top: 0;
-  padding: 3px 8px;
+.hud-palette-item {
+  padding: 5px 10px;
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  background: #2d3748;
+  font-size: 12px;
+  cursor: grab;
+  user-select: none;
+}
+
+.hud-palette-item:hover {
+  background: #3a4a5f;
+}
+
+.hud-palette-item.dragging {
+  opacity: 0.4;
+}
+
+.hud-palette-empty {
+  color: #a8b2c2;
+  font-size: 12px;
+}
+
+.hud-palette-free {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.hud-palette-free input {
+  flex: 1;
+  min-width: 110px;
+}
+
+/* --- HUD編集モード --- */
+
+.hud-edit-overlay {
+  position: absolute;
+  inset: 0;
+  border: 2px dashed #7aa5ff;
+  border-radius: 8px;
+  background: rgba(60, 100, 180, 0.18);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hud-edit-label {
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: rgba(20, 24, 32, 0.8);
+  color: #cfe0ff;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.hud-edit-buttons {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  display: flex;
+  gap: 4px;
+}
+
+.game-container button.hud-edit-config {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 14px;
+}
+
+.hud-edit-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(40, 70, 130, 0.85);
+  color: #eaf1ff;
+  font-size: 13px;
+  z-index: 50;
+}
+
+/* --- キーバインド設定 --- */
+
+.hud-keybinds {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hud-keybind-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hud-keybind-slot {
+  width: 110px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-keybind-key {
+  width: 56px;
+  font-size: 12px;
+  color: #ffd479;
+}
+
+.hud-keybind-warning {
+  width: 100%;
+  color: #ff9d9d;
   font-size: 11px;
 }
+
+/* --- 設定 --- */
+
+.game-container button.hud-settings-toggle {
+  width: 36px;
+  height: 36px;
+  font-size: 17px;
+  border-radius: 8px;
+}
+
+.hud-settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hud-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hud-settings-label {
+  color: #a8b2c2;
+  font-size: 12px;
+}
+
+.hud-settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hud-settings-row input {
+  flex: 1;
+  min-width: 120px;
+}
+
+.hud-settings-hints {
+  color: #a8b2c2;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.hud-macro-list {
+  max-height: 72px;
+  overflow-y: auto;
+}
+
+/* --- ドロップオーバーレイ --- */
 
 .drop-cover {
   position: absolute;

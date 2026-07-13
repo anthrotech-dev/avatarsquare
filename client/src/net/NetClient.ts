@@ -5,6 +5,8 @@ import { decodeMessage, encodeMessage, type GameMessage } from './protocol'
 export interface NetEvents {
   onRemoteVideo(id: string, video: HTMLVideoElement): void
   onRemoteMessage(id: string, message: GameMessage): void
+  /** 自分より後に参加した人が入室した(既存参加者では発火しない) */
+  onPeerJoined(id: string): void
   onRemoteLeft(id: string): void
   onPeersChanged(count: number): void
 }
@@ -45,7 +47,10 @@ export class NetClient {
         const message = decodeMessage(payload)
         if (message) events.onRemoteMessage(participant.identity, message)
       })
-      .on(RoomEvent.ParticipantConnected, notifyPeers)
+      .on(RoomEvent.ParticipantConnected, (participant) => {
+        events.onPeerJoined(participant.identity)
+        notifyPeers()
+      })
       .on(RoomEvent.ParticipantDisconnected, (participant) => {
         events.onRemoteLeft(participant.identity)
         notifyPeers()
@@ -65,9 +70,12 @@ export class NetClient {
     this.room?.localParticipant.publishData(encodeMessage(message), { reliable: false })
   }
 
-  /** アクションなど、確実に届けたいメッセージ(Phase 3で使用) */
-  sendReliable(message: GameMessage): void {
-    this.room?.localParticipant.publishData(encodeMessage(message), { reliable: true })
+  /** アクションなど、確実に届けたいメッセージ。toで宛先を絞れる(省略時は全員) */
+  sendReliable(message: GameMessage, to?: string[]): void {
+    this.room?.localParticipant.publishData(encodeMessage(message), {
+      reliable: true,
+      destinationIdentities: to,
+    })
   }
 
   disconnect(): void {

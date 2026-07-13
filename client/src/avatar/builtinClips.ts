@@ -76,6 +76,81 @@ export function buildWalkClip(vrm: VRM): THREE.AnimationClip {
   return new THREE.AnimationClip('walk', d, tracks)
 }
 
+// ワンショット用。phase(0..2π)を進行度0..1として扱う
+const TAU = Math.PI * 2
+const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
+const easeOut = (t: number) => 1 - (1 - t) ** 2
+
+function oneShotClip(
+  vrm: VRM,
+  name: string,
+  duration: number,
+  samplers: Array<[VRMHumanBoneName, (p: number) => THREE.Euler]>,
+): THREE.AnimationClip {
+  const tracks = samplers
+    .map(([bone, sampler]) => boneTrack(vrm, bone, duration, (phase) => sampler(phase / TAU)))
+    .filter((t): t is THREE.QuaternionKeyframeTrack => t !== null)
+  return new THREE.AnimationClip(name, duration, tracks)
+}
+
+export function buildJumpClip(vrm: VRM): THREE.AnimationClip {
+  // 序盤に屈伸し、腕を振り上げながら伸び上がる
+  const crouch = (p: number) => Math.sin(clamp01(p / 0.4) * Math.PI) * 0.9
+  const raise = (p: number) => easeOut(clamp01((p - 0.15) / 0.35))
+  return oneShotClip(vrm, 'jump', 0.5, [
+    ['leftUpperLeg', (p) => new THREE.Euler(-crouch(p) * 0.8, 0, 0)],
+    ['rightUpperLeg', (p) => new THREE.Euler(-crouch(p) * 0.8, 0, 0)],
+    ['leftLowerLeg', (p) => new THREE.Euler(crouch(p) * 1.3, 0, 0)],
+    ['rightLowerLeg', (p) => new THREE.Euler(crouch(p) * 1.3, 0, 0)],
+    ['leftUpperArm', (p) => new THREE.Euler(-raise(p) * 1.1, 0, -ARM_REST_Z + raise(p) * 0.5)],
+    ['rightUpperArm', (p) => new THREE.Euler(-raise(p) * 1.1, 0, ARM_REST_Z - raise(p) * 0.5)],
+    ['spine', (p) => new THREE.Euler(crouch(p) * 0.15, 0, 0)],
+  ])
+}
+
+export function buildSlashClip(vrm: VRM): THREE.AnimationClip {
+  // 右腕を振りかぶって袈裟斬り
+  const windup = (p: number) => easeOut(clamp01(p / 0.3))
+  const swing = (p: number) => easeOut(clamp01((p - 0.3) / 0.25))
+  return oneShotClip(vrm, 'slash', 0.45, [
+    [
+      'rightUpperArm',
+      (p) =>
+        new THREE.Euler(
+          -2.2 * windup(p) + 2.7 * swing(p),
+          -0.3 * windup(p) + 0.6 * swing(p),
+          ARM_REST_Z - 0.8 * windup(p) + 0.4 * swing(p),
+        ),
+    ],
+    ['rightLowerArm', (p) => new THREE.Euler(-0.8 * windup(p) + 0.8 * swing(p), 0, 0)],
+    ['leftUpperArm', (p) => new THREE.Euler(0.3 * swing(p), 0, -ARM_REST_Z)],
+    ['spine', (p) => new THREE.Euler(0.1 * swing(p), 0.35 * windup(p) - 0.7 * swing(p), 0)],
+  ])
+}
+
+export function buildShootClip(vrm: VRM): THREE.AnimationClip {
+  // 右腕を正面に突き出して撃つ。終盤に軽い反動
+  const aim = (p: number) => easeOut(clamp01(p / 0.3))
+  const recoil = (p: number) => Math.sin(clamp01((p - 0.5) / 0.4) * Math.PI) * 0.2
+  return oneShotClip(vrm, 'shoot', 0.4, [
+    [
+      'rightUpperArm',
+      (p) => new THREE.Euler(-1.35 * aim(p) + recoil(p), 0, ARM_REST_Z * (1 - 0.9 * aim(p))),
+    ],
+    ['rightLowerArm', (p) => new THREE.Euler(recoil(p) * 0.5, 0, 0)],
+    ['spine', (p) => new THREE.Euler(-recoil(p) * 0.3, -0.25 * aim(p), 0)],
+  ])
+}
+
+/** アクション用フォールバッククリップ一式。外部素材を登録すれば差し替わる */
+export function buildActionClips(vrm: VRM): Array<[string, THREE.AnimationClip]> {
+  return [
+    ['jump', buildJumpClip(vrm)],
+    ['slash', buildSlashClip(vrm)],
+    ['shoot', buildShootClip(vrm)],
+  ]
+}
+
 export function buildIdleClip(vrm: VRM): THREE.AnimationClip {
   const d = 4
   const samplers: Array<[VRMHumanBoneName, Sampler]> = [
