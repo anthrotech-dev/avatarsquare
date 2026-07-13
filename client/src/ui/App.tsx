@@ -10,6 +10,8 @@ export function App() {
   const [dragging, setDragging] = useState(false)
   const avatarName = useAppStore((s) => s.avatarName)
   const status = useAppStore((s) => s.status)
+  const netStatus = useAppStore((s) => s.netStatus)
+  const peers = useAppStore((s) => s.peers)
 
   useEffect(() => {
     const container = containerRef.current
@@ -57,6 +59,9 @@ export function App() {
         <div className="hint">.vrm(アバター) .vrma/.fbx(モーション)をドロップで読み込み</div>
         <div className="hint">walk/idle以外のモーション名はその場で1回再生されます</div>
         {avatarName && <div>アバター: {avatarName}</div>}
+        <div className="hint">
+          {netStatus} / 他{peers}人
+        </div>
         {status && <div className="status">{status}</div>}
         <button type="button" onClick={() => fileInputRef.current?.click()}>
           VRMを開く

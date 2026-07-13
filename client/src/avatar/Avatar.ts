@@ -9,6 +9,7 @@ import {
   looksLikeAnimationFile,
 } from './animationLoaders'
 import { buildIdleClip, buildWalkClip } from './builtinClips'
+import { AVATAR_LAYER } from './captureSpec'
 
 export const WALK_SPEED = 3.2 // m/s
 const TURN_SPEED = 12 // 大きいほど旋回が速い
@@ -31,6 +32,8 @@ export class Avatar {
 
   constructor(scene: THREE.Scene) {
     this.placeholder = buildPlaceholder()
+    // アバター本体は配信キャプチャ用レイヤーにも登録する(ブロブシャドウは除く)
+    this.placeholder.traverse((obj) => obj.layers.enable(AVATAR_LAYER))
     this.root.add(this.placeholder)
     this.root.add(buildBlobShadow())
     scene.add(this.root)
@@ -42,6 +45,10 @@ export class Avatar {
 
   get isMoving(): boolean {
     return this.moving
+  }
+
+  get yaw(): number {
+    return this.root.rotation.y
   }
 
   get hasVRM(): boolean {
@@ -67,6 +74,7 @@ export class Avatar {
     vrm.scene.traverse((obj) => {
       // スキンメッシュはバウンディングが追従しないためカリングを無効化
       obj.frustumCulled = false
+      obj.layers.enable(AVATAR_LAYER)
     })
 
     if (this.vrm) {

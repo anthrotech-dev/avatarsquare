@@ -10,3 +10,4 @@ dist/
 *:Zone.Identifier
 client/public/animations/*
 !client/public/animations/README.txt
+server/server
