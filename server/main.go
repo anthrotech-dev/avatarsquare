@@ -1,5 +1,6 @@
 // avatarsquareのトークンサーバー。
-// LiveKitへの入室トークン(JWT)を発行するだけの薄いAPI。
+// LiveKitへの入室トークン(JWT)の発行と、必要に応じてLiveKitシグナリングへの
+// リバースプロキシ(wssのTLS終端)を担う。
 // ゲームロジックのメッセージはクライアント間でLiveKit DataChannelを流れるため、
 // このサーバーは中身を解釈しない。
 package main
@@ -8,6 +9,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"regexp"
 	"time"
@@ -29,6 +32,11 @@ func main() {
 	apiSecret := getenv("LIVEKIT_API_SECRET", "secret")
 	livekitURL := getenv("LIVEKIT_URL", "ws://localhost:7880")
 	addr := getenv("ADDR", ":8787")
+	// 証明書と鍵を指定するとHTTPSで待ち受ける(.dev TLDはHSTSプリロードのため必須)
+	tlsCert := os.Getenv("TLS_CERT")
+	tlsKey := os.Getenv("TLS_KEY")
+	// 指定するとトークン以外のパスをLiveKitへ転送する(wssのTLS終端として動く)
+	proxyTarget := os.Getenv("LIVEKIT_PROXY_TARGET")
 
 	http.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -58,6 +66,19 @@ func main() {
 		}
 	})
 
-	log.Printf("token server listening on %s (livekit: %s)", addr, livekitURL)
+	if proxyTarget != "" {
+		target, err := url.Parse(proxyTarget)
+		if err != nil {
+			log.Fatalf("invalid LIVEKIT_PROXY_TARGET: %v", err)
+		}
+		// httputil.ReverseProxyはUpgrade(WebSocket)も転送できる
+		http.Handle("/", httputil.NewSingleHostReverseProxy(target))
+		log.Printf("proxying non-/token traffic to %s", proxyTarget)
+	}
+
+	log.Printf("token server listening on %s (livekit: %s, tls: %v)", addr, livekitURL, tlsCert != "")
+	if tlsCert != "" && tlsKey != "" {
+		log.Fatal(http.ListenAndServeTLS(addr, tlsCert, tlsKey, nil))
+	}
 	log.Fatal(http.ListenAndServe(addr, nil))
 }

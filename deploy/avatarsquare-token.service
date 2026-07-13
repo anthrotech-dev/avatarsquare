@@ -1,0 +1,21 @@
+[Unit]
+Description=avatarsquare token server (TLS + LiveKit signaling proxy)
+After=network-online.target livekit.service
+Wants=network-online.target
+
+[Service]
+User=totegamma
+WorkingDirectory=/home/totegamma/avatarsquare
+# root専用の証明書をsystemdが読み込み、非rootのプロセスへ渡す
+LoadCredential=fullchain.pem:/etc/letsencrypt/live/tunnel.anthrotech.dev/fullchain.pem
+LoadCredential=privkey.pem:/etc/letsencrypt/live/tunnel.anthrotech.dev/privkey.pem
+Environment=TLS_CERT=%d/fullchain.pem
+Environment=TLS_KEY=%d/privkey.pem
+Environment=LIVEKIT_URL=wss://tunnel.anthrotech.dev:8787
+Environment=LIVEKIT_PROXY_TARGET=http://127.0.0.1:7880
+ExecStart=/home/totegamma/avatarsquare/token-server
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

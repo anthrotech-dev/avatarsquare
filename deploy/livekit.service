@@ -1,0 +1,14 @@
+[Unit]
+Description=LiveKit server (avatarsquare dev)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=totegamma
+WorkingDirectory=/home/totegamma/avatarsquare
+ExecStart=/home/totegamma/avatarsquare/livekit-server --dev --bind 0.0.0.0 --node-ip 162.43.91.112
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
