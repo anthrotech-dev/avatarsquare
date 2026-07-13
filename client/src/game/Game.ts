@@ -17,6 +17,7 @@ import { EffectSystem } from './EffectSystem'
 import { registerBuiltinEffects } from './effects'
 import { buildMap } from './GroundMap'
 import { buildNavGrid, SPAWN } from './MapDef'
+import { acquireFlatMaterial, releaseFlatMaterial } from './materialPool'
 import type { NavGrid } from './pathfinding'
 import { RemoteAvatars } from './RemoteAvatars'
 
@@ -27,6 +28,8 @@ const ZOOM_MIN = 0.7 // 画面半分の高さ(ワールド単位)。小さいほ
 const ZOOM_MAX = 32 // マップ全体が見渡せる
 const ZOOM_DEFAULT = 9
 const MARKER_LIFETIME = 0.6 // 秒
+/** 移動マーカーの共有ジオメトリ(毎回同一形状。disposeしない) */
+const MARKER_GEOMETRY = new THREE.RingGeometry(0.25, 0.35, 32)
 const ROOM_NAME = 'square'
 const POS_SEND_INTERVAL = 1 / 15 // 秒
 const HUD_POS_INTERVAL = 0.2 // 秒。HUDの座標表示更新(毎フレームはReact再レンダ嵐になる)
@@ -78,6 +81,8 @@ export class Game {
     this.container = container
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true })
+    // コンパイル直後のgetShaderInfoLog等の同期GPUストール(長タスクの原因)を避ける
+    this.renderer.debug.checkShaderErrors = false
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     container.appendChild(this.renderer.domElement)
 
@@ -162,8 +167,7 @@ export class Game {
   }
 
   private async connectNet(): Promise<void> {
-    const { setNetStatus, setPeers, setSelfId, upsertPlayer, removePlayer } =
-      useAppStore.getState()
+    const { setNetStatus, setPeers, setSelfId, upsertPlayer, removePlayer } = useAppStore.getState()
     const identity = `user-${Math.random().toString(36).slice(2, 8)}`
     this.identity = identity
     setSelfId(identity)
@@ -353,6 +357,14 @@ export class Game {
       void clearCachedVRM().then(() =>
         useAppStore.getState().setStatus('キャッシュしたVRMを削除しました'),
       )
+    },
+    getRenderStats: () => {
+      const info = this.renderer.info
+      return [
+        `draw calls: ${info.render.calls} / triangles: ${info.render.triangles}`,
+        `programs: ${info.programs?.length ?? 0} / geometries: ${info.memory.geometries} / textures: ${info.memory.textures}`,
+        `markers: ${this.markers.length}`,
+      ]
     },
   }
 
@@ -559,15 +571,9 @@ export class Game {
   }
 
   private addMarker(point: THREE.Vector3): void {
-    const mesh = new THREE.Mesh(
-      new THREE.RingGeometry(0.25, 0.35, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0xffe066,
-        transparent: true,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      }),
-    )
+    // ジオメトリは毎回同一形状なので共有、マテリアルはプールから
+    // (disposeするとシェーダー再コンパイルが起きるため使い回す)
+    const mesh = new THREE.Mesh(MARKER_GEOMETRY, acquireFlatMaterial(0xffe066))
     mesh.rotation.x = -Math.PI / 2
     mesh.position.copy(point)
     mesh.position.y += 0.04
@@ -582,8 +588,7 @@ export class Game {
       const t = marker.age / MARKER_LIFETIME
       if (t >= 1) {
         this.scene.remove(marker.mesh)
-        marker.mesh.geometry.dispose()
-        ;(marker.mesh.material as THREE.Material).dispose()
+        releaseFlatMaterial(marker.mesh.material as THREE.MeshBasicMaterial)
         this.markers.splice(i, 1)
         continue
       }

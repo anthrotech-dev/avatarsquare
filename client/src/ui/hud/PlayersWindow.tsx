@@ -13,9 +13,7 @@ export function PlayersWindow() {
   const avatarName = useAppStore((s) => s.avatarName)
 
   const selfName = playerName || avatarName || selfId || '(未接続)'
-  const sorted = [...players].sort((a, b) =>
-    (a.name || a.id).localeCompare(b.name || b.id, 'ja'),
-  )
+  const sorted = [...players].sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, 'ja'))
 
   return (
     <FloatingWindow

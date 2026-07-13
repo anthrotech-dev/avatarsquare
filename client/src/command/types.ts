@@ -39,6 +39,8 @@ export interface GameCommandAPI {
   openVrmPicker(): void
   /** キャッシュ済みVRMを削除する */
   clearVrmCache(): void
+  /** レンダラー統計(描画コール・プログラム数など)。性能問題の切り分け用 */
+  getRenderStats(): string[]
 }
 
 export interface CommandOutput {

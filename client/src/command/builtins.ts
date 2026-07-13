@@ -290,6 +290,13 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       },
     },
     {
+      name: 'stats',
+      description: 'レンダラー統計を表示する(性能問題の切り分け用)',
+      execute(ctx) {
+        for (const line of ctx.api.getRenderStats()) ctx.out.print(line)
+      },
+    },
+    {
       name: 'help',
       description: 'コマンド一覧・使い方を表示する',
       usage: '/help [name]',

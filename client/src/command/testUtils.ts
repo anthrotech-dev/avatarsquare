@@ -31,6 +31,7 @@ export function makeTestContext(overrides: Partial<GameCommandAPI> = {}): {
     focusChat: vi.fn(),
     openVrmPicker: vi.fn(),
     clearVrmCache: vi.fn(),
+    getRenderStats: vi.fn(() => []),
     ...overrides,
   }
   const ctx: CommandContext = {

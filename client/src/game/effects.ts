@@ -1,9 +1,11 @@
 import * as THREE from 'three'
 import type { EffectInstance, EffectSpawn, EffectSystem } from './EffectSystem'
+import { acquireFlatMaterial, releaseFlatMaterial } from './materialPool'
 
 /**
  * 組み込みエフェクト。クリックマーカーと同じく
  * MeshBasicMaterial + transparent + depthWrite:false の軽量描画で統一する。
+ * マテリアルはプール経由で使い回す(disposeするとシェーダー再コンパイルが起きる)。
  */
 
 const SLASH_LIFETIME = 0.28
@@ -11,15 +13,6 @@ const SLASH_ARC = (100 * Math.PI) / 180
 const SHOT_SPEED = 14 // m/s
 const SHOT_HEIGHT = 1.0
 const IMPACT_LIFETIME = 0.3
-
-function flatMaterial(color: number): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({
-    color,
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  })
-}
 
 /** yaw方向を中心にした扇形が展開してフェードする斬撃 */
 class SlashEffect implements EffectInstance {
@@ -41,7 +34,7 @@ class SlashEffect implements EffectInstance {
       yaw - Math.PI / 2 - SLASH_ARC / 2,
       SLASH_ARC,
     )
-    this.mesh = new THREE.Mesh(geometry, flatMaterial(0xd9ecff))
+    this.mesh = new THREE.Mesh(geometry, acquireFlatMaterial(0xd9ecff))
     this.mesh.rotation.x = -Math.PI / 2
     this.mesh.position.set(spawn.x, 0.06, spawn.z)
     scene.add(this.mesh)
@@ -59,7 +52,7 @@ class SlashEffect implements EffectInstance {
   dispose(): void {
     this.scene.remove(this.mesh)
     this.mesh.geometry.dispose()
-    ;(this.mesh.material as THREE.Material).dispose()
+    releaseFlatMaterial(this.mesh.material as THREE.MeshBasicMaterial)
   }
 }
 
@@ -74,7 +67,10 @@ class ShotEffect implements EffectInstance {
     spawn: EffectSpawn,
     private readonly scene: THREE.Scene,
   ) {
-    this.bullet = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), flatMaterial(0xffc766))
+    this.bullet = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 12, 8),
+      acquireFlatMaterial(0xffc766),
+    )
     this.bullet.position.set(spawn.x, SHOT_HEIGHT, spawn.z)
     this.target = new THREE.Vector3(spawn.tx ?? spawn.x, SHOT_HEIGHT, spawn.tz ?? spawn.z)
     scene.add(this.bullet)
@@ -102,7 +98,10 @@ class ShotEffect implements EffectInstance {
 
   private spawnImpactRing(): void {
     this.bullet.visible = false
-    this.ring = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.42, 24), flatMaterial(0xffc766))
+    this.ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.28, 0.42, 24),
+      acquireFlatMaterial(0xffc766),
+    )
     this.ring.rotation.x = -Math.PI / 2
     this.ring.position.set(this.target.x, 0.06, this.target.z)
     this.scene.add(this.ring)
@@ -111,11 +110,11 @@ class ShotEffect implements EffectInstance {
   dispose(): void {
     this.scene.remove(this.bullet)
     this.bullet.geometry.dispose()
-    ;(this.bullet.material as THREE.Material).dispose()
+    releaseFlatMaterial(this.bullet.material as THREE.MeshBasicMaterial)
     if (this.ring) {
       this.scene.remove(this.ring)
       this.ring.geometry.dispose()
-      ;(this.ring.material as THREE.Material).dispose()
+      releaseFlatMaterial(this.ring.material as THREE.MeshBasicMaterial)
     }
   }
 }

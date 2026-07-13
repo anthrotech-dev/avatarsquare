@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CommandRegistry } from './CommandRegistry'
 import { registerBuiltins } from './builtins'
+import { CommandRegistry } from './CommandRegistry'
 import { MacroStore } from './macros'
 import { makeMemoryStorage, makeTestContext } from './testUtils'
 

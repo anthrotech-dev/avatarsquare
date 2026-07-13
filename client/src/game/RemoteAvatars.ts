@@ -82,11 +82,28 @@ class RemoteAvatar {
   }
 
   setVideo(video: HTMLVideoElement): void {
+    // 再接続などでトラックが差し替わったとき、旧映像リソースを確実に手放す
+    // (放置するとvideoのデコードとVRAMがリークする)
+    if (this.video && this.video !== video) {
+      this.video.pause()
+      this.video.srcObject = null
+      this.video.remove()
+      this.disposeVideoMaterial()
+    }
     this.video = video
     const texture = new THREE.VideoTexture(video)
     texture.colorSpace = THREE.SRGBColorSpace
     this.plane.material = billboardMaterial(texture)
     this.plane.visible = true
+  }
+
+  /** planeがビデオ用ShaderMaterialを持っていればテクスチャごと破棄する */
+  private disposeVideoMaterial(): void {
+    const material = this.plane.material
+    if (material instanceof THREE.ShaderMaterial) {
+      ;(material.uniforms.map?.value as THREE.Texture | undefined)?.dispose()
+      material.dispose()
+    }
   }
 
   update(delta: number, cameraQuaternion: THREE.Quaternion): void {
@@ -108,12 +125,16 @@ class RemoteAvatar {
 
   dispose(): void {
     this.plane.geometry.dispose()
-    ;(this.plane.material as THREE.Material).dispose()
+    this.disposeVideoMaterial()
     this.shadow.geometry.dispose()
     ;(this.shadow.material as THREE.Material).dispose()
     this.nameplate?.dispose()
     this.bubble?.dispose()
-    this.video?.remove()
+    if (this.video) {
+      this.video.pause()
+      this.video.srcObject = null
+      this.video.remove()
+    }
   }
 }
 

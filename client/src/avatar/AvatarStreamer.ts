@@ -27,6 +27,8 @@ export class AvatarStreamer {
     this.canvas.height = CAPTURE_PX_H
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true })
+    // コンパイル直後のgetShaderInfoLog等の同期GPUストール(長タスクの原因)を避ける
+    this.renderer.debug.checkShaderErrors = false
     this.renderer.setClearColor(0x000000, 1)
     this.renderer.setScissorTest(true)
 

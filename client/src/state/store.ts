@@ -169,8 +169,7 @@ export const useAppStore = create<AppState>((set) => ({
       if (!existing) return { players: [...state.players, { id, name: name ?? '' }] }
       return { players: state.players.map((p) => (p.id === id ? { ...p, name: name ?? '' } : p)) }
     }),
-  removePlayer: (id) =>
-    set((state) => ({ players: state.players.filter((p) => p.id !== id) })),
+  removePlayer: (id) => set((state) => ({ players: state.players.filter((p) => p.id !== id) })),
   clearPlayers: () => set({ players: [] }),
   setPlayerName: (name) => {
     const playerName = sanitizeName(name)
