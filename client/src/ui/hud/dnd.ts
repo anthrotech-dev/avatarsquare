@@ -12,6 +12,8 @@ export interface PaletteItemData extends Record<string, unknown> {
 
 export interface HotbarSlotData extends Record<string, unknown> {
   type: 'hotbar-slot'
+  /** ドラッグ元ホットバーのseq(ホットバー間の移動に対応) */
+  seq: number
   index: number
   slot: HotbarSlot
 }
@@ -26,5 +28,10 @@ export function isPaletteItemData(data: Record<string, unknown>): data is Palett
 }
 
 export function isHotbarSlotData(data: Record<string, unknown>): data is HotbarSlotData {
-  return data.type === 'hotbar-slot' && typeof data.index === 'number' && isSlot(data.slot)
+  return (
+    data.type === 'hotbar-slot' &&
+    typeof data.seq === 'number' &&
+    typeof data.index === 'number' &&
+    isSlot(data.slot)
+  )
 }

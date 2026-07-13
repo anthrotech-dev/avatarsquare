@@ -24,6 +24,8 @@ export function makeTestContext(overrides: Partial<GameCommandAPI> = {}): {
     sendChat: vi.fn(),
     setHudEditMode: vi.fn(),
     resetHudLayout: vi.fn(),
+    openSettings: vi.fn(),
+    openPalette: vi.fn(),
     ...overrides,
   }
   const ctx: CommandContext = {

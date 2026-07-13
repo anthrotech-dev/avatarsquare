@@ -1,17 +1,33 @@
 /**
  * ホットバーのスロット定義と永続化。
  * スロットの中身は「コマンド文字列」に統一する(すべての操作はコマンド)。
+ * ホットバーは複数持て、seqで識別する。表示から削除してもactive=falseに
+ * するだけで割当・キー設定は保持し、再追加時に同じseqの設定が復活する。
  */
+
+import { DEFAULT_KEYBINDS, isKeybind, type SlotKeybind } from './keybinds'
 
 export interface HotbarSlot {
   command: string
   label: string
 }
 
-/** キー1〜9, 0 に対応 */
-export const HOTBAR_SIZE = 10
+export interface HotbarData {
+  /** ホットバー0,1,2… 永続の識別番号 */
+  seq: number
+  /** false=表示から削除済み(設定は保持) */
+  active: boolean
+  slots: (HotbarSlot | null)[]
+  keys: (SlotKeybind | null)[]
+}
 
-const STORAGE_KEY = 'avatarsquare:hotbar'
+/** 1本あたりのスロット数。デフォルトキーは1〜9,0,-,^ */
+export const HOTBAR_SIZE = 12
+
+const STORAGE_KEY = 'avatarsquare:hotbars'
+/** 単一ホットバー時代(v1)の保存キー。読み替え用に残す */
+const LEGACY_SLOTS_KEY = 'avatarsquare:hotbar'
+const LEGACY_KEYS_KEY = 'avatarsquare:hotbarKeys'
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
 
@@ -25,6 +41,8 @@ export const DEFAULT_HOTBAR: (HotbarSlot | null)[] = [
   { command: '/emote VRMA_07', label: '屈伸' },
   null,
   null,
+  { command: '/settings', label: '設定' },
+  null,
   null,
 ]
 
@@ -33,33 +51,94 @@ function isSlot(value: unknown): value is HotbarSlot {
   return typeof slot?.command === 'string' && typeof slot?.label === 'string'
 }
 
-export function loadHotbar(storage: StorageLike = localStorage): (HotbarSlot | null)[] {
+/** 長さHOTBAR_SIZEに揃え、各要素をバリデーションする */
+function normalizeSlots(values: unknown[]): (HotbarSlot | null)[] {
+  return Array.from({ length: HOTBAR_SIZE }, (_, i) => (isSlot(values[i]) ? values[i] : null))
+}
+
+function normalizeKeys(values: unknown[]): (SlotKeybind | null)[] {
+  return Array.from({ length: HOTBAR_SIZE }, (_, i) => (isKeybind(values[i]) ? values[i] : null))
+}
+
+function defaultHotbar(): HotbarData {
+  return { seq: 0, active: true, slots: [...DEFAULT_HOTBAR], keys: [...DEFAULT_KEYBINDS] }
+}
+
+function isHotbarData(value: unknown): value is HotbarData {
+  const data = value as HotbarData | null
+  return (
+    typeof data?.seq === 'number' &&
+    typeof data?.active === 'boolean' &&
+    Array.isArray(data?.slots) &&
+    Array.isArray(data?.keys)
+  )
+}
+
+/** v1(単一ホットバー)の保存データをHotbarData[]に読み替える。無ければnull */
+function loadLegacy(storage: StorageLike): HotbarData[] | null {
+  const rawSlots = storage.getItem(LEGACY_SLOTS_KEY)
+  const rawKeys = storage.getItem(LEGACY_KEYS_KEY)
+  if (!rawSlots && !rawKeys) return null
+  const parsedSlots = rawSlots ? (JSON.parse(rawSlots) as unknown[]) : []
+  const parsedKeys = rawKeys ? (JSON.parse(rawKeys) as unknown[]) : [...DEFAULT_KEYBINDS]
+  if (!Array.isArray(parsedSlots) || !Array.isArray(parsedKeys)) return null
+  // 12スロット化で増えた分(旧配列より後ろ)はデフォルトキーで補う
+  const keys = normalizeKeys(parsedKeys).map((bind, i) =>
+    i < parsedKeys.length ? bind : DEFAULT_KEYBINDS[i],
+  )
+  return [{ seq: 0, active: true, slots: normalizeSlots(parsedSlots), keys }]
+}
+
+export function loadHotbars(storage: StorageLike = localStorage): HotbarData[] {
   try {
     const raw = storage.getItem(STORAGE_KEY)
-    if (!raw) return [...DEFAULT_HOTBAR]
-    const parsed = JSON.parse(raw) as unknown[]
-    if (!Array.isArray(parsed)) return [...DEFAULT_HOTBAR]
-    return Array.from({ length: HOTBAR_SIZE }, (_, i) => (isSlot(parsed[i]) ? parsed[i] : null))
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown[]
+      if (!Array.isArray(parsed)) return [defaultHotbar()]
+      const hotbars = parsed.filter(isHotbarData).map((data) => ({
+        seq: data.seq,
+        active: data.active,
+        slots: normalizeSlots(data.slots),
+        keys: normalizeKeys(data.keys),
+      }))
+      return hotbars.length > 0 ? hotbars : [defaultHotbar()]
+    }
+    return loadLegacy(storage) ?? [defaultHotbar()]
   } catch {
-    return [...DEFAULT_HOTBAR]
+    return [defaultHotbar()]
   }
 }
 
-export function saveHotbar(
-  slots: (HotbarSlot | null)[],
-  storage: StorageLike = localStorage,
-): void {
-  storage.setItem(STORAGE_KEY, JSON.stringify(slots.slice(0, HOTBAR_SIZE)))
+export function saveHotbars(hotbars: HotbarData[], storage: StorageLike = localStorage): void {
+  try {
+    storage.setItem(STORAGE_KEY, JSON.stringify(hotbars))
+  } catch {
+    // 保存できなくてもセッション中は有効
+  }
 }
 
-/** スロットa,bの中身を入れ替えた新しい配列を返す */
-export function swapSlots(
-  slots: (HotbarSlot | null)[],
-  a: number,
-  b: number,
-): (HotbarSlot | null)[] {
-  const next = [...slots]
-  if (a < 0 || b < 0 || a >= next.length || b >= next.length) return next
-  ;[next[a], next[b]] = [next[b], next[a]]
-  return next
+/**
+ * ホットバーを1本追加する。非アクティブがあれば最小seqを復活(設定ごと戻る)、
+ * 無ければmax+1のseqで空のホットバーを新規作成する。
+ */
+export function activateHotbar(hotbars: HotbarData[]): HotbarData[] {
+  const revive = hotbars
+    .filter((h) => !h.active)
+    .reduce<HotbarData | null>((min, h) => (min === null || h.seq < min.seq ? h : min), null)
+  if (revive) return hotbars.map((h) => (h.seq === revive.seq ? { ...h, active: true } : h))
+  const seq = hotbars.reduce((max, h) => Math.max(max, h.seq + 1), 0)
+  return [
+    ...hotbars,
+    {
+      seq,
+      active: true,
+      slots: Array.from({ length: HOTBAR_SIZE }, () => null),
+      keys: Array.from({ length: HOTBAR_SIZE }, () => null),
+    },
+  ]
+}
+
+/** ホットバーを表示から削除する。設定は保持され、activateHotbarで復活する */
+export function deactivateHotbar(hotbars: HotbarData[], seq: number): HotbarData[] {
+  return hotbars.map((h) => (h.seq === seq ? { ...h, active: false } : h))
 }

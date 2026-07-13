@@ -55,15 +55,11 @@ body,
   bottom: 12px;
 }
 
+/* ホットバーは複数持てるため、位置未保存のものは--hud-stackで下から積み上げる */
 .hud-anchor-hotbar {
-  bottom: 16px;
+  bottom: calc(16px + var(--hud-stack, 0) * 72px);
   left: 50%;
   transform: translateX(-50%);
-}
-
-.hud-anchor-settings {
-  top: 12px;
-  right: 12px;
 }
 
 /* 非表示要素(HUD編集モード中のみ描画される) */
@@ -235,10 +231,25 @@ body,
   gap: 6px;
 }
 
-.hud-menu button {
+/* メニュー項目。クリックで実行、ホットバーへドラッグで登録 */
+.hud-menu-item {
   width: 100%;
   padding: 8px 12px;
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  background: #2d3748;
   font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.hud-menu-item:hover {
+  background: #3a4a5f;
+}
+
+.hud-menu-item.dragging {
+  opacity: 0.4;
 }
 
 /* --- フローティングウィンドウ --- */
@@ -335,12 +346,14 @@ body,
   cursor: move;
   user-select: none;
   touch-action: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
+/* 要素名は要素のすぐ外の右上に出す */
 .hud-edit-label {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 4px;
   padding: 2px 10px;
   border-radius: 6px;
   background: rgba(20, 24, 32, 0.8);
@@ -350,20 +363,42 @@ body,
   white-space: nowrap;
 }
 
-.hud-edit-buttons {
-  position: absolute;
-  top: -14px;
-  right: -14px;
-  display: flex;
-  gap: 4px;
+/* 画面上端に近い要素はラベルが見切れるので下側に出す */
+.hud-edit-label.below {
+  bottom: auto;
+  top: 100%;
+  margin: 4px 0 0;
 }
 
-.game-container button.hud-edit-config {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 50%;
-  font-size: 14px;
+/* 編集モードの右クリックメニュー(バックドロップで外側クリックを拾う) */
+.hud-context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.hud-context-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid #4a5568;
+  border-radius: 8px;
+  background: rgba(26, 32, 44, 0.95);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.hud-context-menu button {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 5px;
+}
+
+.hud-context-menu button:hover {
+  background: #3a4a5f;
 }
 
 .hud-edit-banner {
@@ -418,13 +453,6 @@ body,
 }
 
 /* --- 設定 --- */
-
-.game-container button.hud-settings-toggle {
-  width: 36px;
-  height: 36px;
-  font-size: 17px;
-  border-radius: 8px;
-}
 
 .hud-settings-content {
   display: flex;

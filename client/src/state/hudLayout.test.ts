@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampHudPosition,
-  DEFAULT_HUD_LAYOUT,
-  DEFAULT_HUD_VISIBILITY,
   loadHudLayout,
   loadHudVisibility,
   saveHudLayout,
@@ -18,57 +16,72 @@ function makeMemoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
 }
 
 describe('hudLayout', () => {
-  it('初回は全てデフォルト位置(null)', () => {
-    expect(loadHudLayout(makeMemoryStorage())).toEqual(DEFAULT_HUD_LAYOUT)
+  it('初回は空(全てデフォルト位置)', () => {
+    expect(loadHudLayout(makeMemoryStorage())).toEqual({})
   })
 
-  it('保存内容がラウンドトリップする', () => {
+  it('保存内容がラウンドトリップする(動的なホットバーIDも)', () => {
     const storage = makeMemoryStorage()
-    const layout = loadHudLayout(storage)
-    layout.hotbar = { x: 100, y: 200 }
-    layout.chat = null
+    const layout = {
+      'hotbar-0': { x: 100, y: 200 },
+      'hotbar-3': { x: 5, y: 6 },
+      chat: { x: 10, y: 20 },
+    }
     saveHudLayout(layout, storage)
     expect(loadHudLayout(storage)).toEqual(layout)
   })
 
-  it('壊れたJSONはデフォルトに戻る', () => {
+  it('壊れたJSONは空に戻る', () => {
     const storage = makeMemoryStorage()
     storage.setItem('avatarsquare:hudLayout', '{bad')
-    expect(loadHudLayout(storage)).toEqual(DEFAULT_HUD_LAYOUT)
+    expect(loadHudLayout(storage)).toEqual({})
   })
 
-  it('不正な値・未知のキーは無視される', () => {
+  it('不正な値のキーは無視される', () => {
     const storage = makeMemoryStorage()
     storage.setItem(
       'avatarsquare:hudLayout',
-      JSON.stringify({ hotbar: { x: 'a', y: 2 }, chat: { x: 5, y: 6 }, unknown: { x: 1, y: 1 } }),
+      JSON.stringify({ 'hotbar-0': { x: 'a', y: 2 }, chat: { x: 5, y: 6 }, status: null }),
     )
     const layout = loadHudLayout(storage)
-    expect(layout.hotbar).toBeNull()
-    expect(layout.chat).toEqual({ x: 5, y: 6 })
-    expect('unknown' in layout).toBe(false)
+    expect(layout).toEqual({ chat: { x: 5, y: 6 } })
+  })
+
+  it('旧キーhotbarはhotbar-0に読み替える', () => {
+    const storage = makeMemoryStorage()
+    storage.setItem('avatarsquare:hudLayout', JSON.stringify({ hotbar: { x: 1, y: 2 } }))
+    expect(loadHudLayout(storage)).toEqual({ 'hotbar-0': { x: 1, y: 2 } })
+    // hotbar-0が既にあるなら旧キーは捨てる
+    storage.setItem(
+      'avatarsquare:hudLayout',
+      JSON.stringify({ hotbar: { x: 1, y: 2 }, 'hotbar-0': { x: 3, y: 4 } }),
+    )
+    expect(loadHudLayout(storage)).toEqual({ 'hotbar-0': { x: 3, y: 4 } })
   })
 })
 
 describe('hudVisibility', () => {
-  it('初回は全て表示', () => {
-    expect(loadHudVisibility(makeMemoryStorage())).toEqual(DEFAULT_HUD_VISIBILITY)
+  it('初回は空(全て表示扱い)', () => {
+    expect(loadHudVisibility(makeMemoryStorage())).toEqual({})
   })
 
   it('保存内容がラウンドトリップする', () => {
     const storage = makeMemoryStorage()
-    const visibility = loadHudVisibility(storage)
-    visibility.settings = false
+    const visibility = { status: false, 'hotbar-1': false, chat: true }
     saveHudVisibility(visibility, storage)
     expect(loadHudVisibility(storage)).toEqual(visibility)
   })
 
-  it('壊れたデータ・不正値はデフォルトに戻る', () => {
+  it('不正値のキーは無視される', () => {
     const storage = makeMemoryStorage()
-    storage.setItem('avatarsquare:hudVisibility', JSON.stringify({ settings: 'no', chat: false }))
-    const visibility = loadHudVisibility(storage)
-    expect(visibility.settings).toBe(true)
-    expect(visibility.chat).toBe(false)
+    storage.setItem('avatarsquare:hudVisibility', JSON.stringify({ status: 'no', chat: false }))
+    expect(loadHudVisibility(storage)).toEqual({ chat: false })
+  })
+
+  it('旧キーhotbarはhotbar-0に読み替える', () => {
+    const storage = makeMemoryStorage()
+    storage.setItem('avatarsquare:hudVisibility', JSON.stringify({ hotbar: false }))
+    expect(loadHudVisibility(storage)).toEqual({ 'hotbar-0': false })
   })
 })
 

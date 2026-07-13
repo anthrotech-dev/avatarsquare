@@ -1,28 +1,36 @@
 import { useEffect, useRef, useState } from 'react'
 import { clampHudPosition, type HudElementId, type HudPosition } from '../../state/hudLayout'
 import { useAppStore } from '../../state/store'
+import { type ContextMenuItem, HudContextMenu } from './HudContextMenu'
 import { useDragMove } from './useDragMove'
 
 interface Props {
   id: HudElementId
   label: string
+  /** CSSデフォルトアンカーのクラス。省略時は hud-anchor-<id> */
+  anchorClass?: string
+  /** アンカーに渡す追加スタイル(ホットバーの積み上げ位置指定など) */
+  anchorStyle?: React.CSSProperties
+  /** 編集モードの右クリックメニューに足す要素固有の項目 */
+  menuItems?: ContextMenuItem[]
   children: React.ReactNode
 }
 
 /**
  * HUD要素の配置ラッパー。カスタム位置(hudLayout)があればそれを、
  * なければCSSのデフォルトアンカー(.hud-anchor-<id>)を使う。
- * HUD編集モード中はオーバーレイで内側の操作を遮断し、ドラッグで移動できる。
+ * HUD編集モード中はオーバーレイで内側の操作を遮断し、ドラッグで移動、
+ * 右クリックで設定メニュー(可視切替など)を出せる。
  */
-export function HudElement({ id, label, children }: Props) {
+export function HudElement({ id, label, anchorClass, anchorStyle, menuItems, children }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const saved = useAppStore((s) => s.hudLayout[id])
-  const visible = useAppStore((s) => s.hudVisibility[id])
+  const visible = useAppStore((s) => s.hudVisibility[id] ?? true)
   const editMode = useAppStore((s) => s.hudEditMode)
   const setHudPosition = useAppStore((s) => s.setHudPosition)
   const setHudVisibility = useAppStore((s) => s.setHudVisibility)
-  const setHudDetailOpen = useAppStore((s) => s.setHudDetailOpen)
   const [dragPos, setDragPos] = useState<HudPosition | null>(null)
+  const [menuPos, setMenuPos] = useState<HudPosition | null>(null)
   const [, forceRender] = useState(0)
 
   // ウィンドウリサイズで描画時クランプをやり直す(保存値は変えない)
@@ -55,7 +63,7 @@ export function HudElement({ id, label, children }: Props) {
   })
 
   const pos = dragPos ?? saved
-  const style: React.CSSProperties | undefined = pos
+  const style: React.CSSProperties = pos
     ? // クランプは描画時に適用(dragPos中はそのまま追従)
       (() => {
         const rect = ref.current?.getBoundingClientRect()
@@ -67,6 +75,7 @@ export function HudElement({ id, label, children }: Props) {
               { width: window.innerWidth, height: window.innerHeight },
             )
         return {
+          ...anchorStyle,
           left: clamped.x,
           top: clamped.y,
           right: 'auto',
@@ -74,46 +83,53 @@ export function HudElement({ id, label, children }: Props) {
           transform: 'none',
         }
       })()
-    : undefined
+    : { ...anchorStyle }
 
   // 非表示要素はプレイモードでは描画せず、編集モード中だけ半透明で見せる(再表示の操作のため)
   if (!visible && !editMode) return null
 
-  const classes = ['hud-anchor', `hud-anchor-${id}`]
+  const classes = ['hud-anchor', anchorClass ?? `hud-anchor-${id}`]
   if (!visible) classes.push('hud-hidden')
 
   return (
     <div ref={ref} className={classes.join(' ')} style={style}>
       {children}
       {editMode && (
-        <div className="hud-edit-overlay" onPointerDown={drag.onPointerDown}>
-          <span className="hud-edit-label">
+        <>
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: マウス専用のドラッグ/右クリック用オーバーレイ */}
+          <div
+            className="hud-edit-overlay"
+            onPointerDown={drag.onPointerDown}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setMenuPos({ x: e.clientX, y: e.clientY })
+            }}
+          />
+          {/* 画面上端ではラベルが見切れるため下側に切り替える */}
+          <span
+            className={
+              (ref.current?.getBoundingClientRect().top ?? Infinity) < 34
+                ? 'hud-edit-label below'
+                : 'hud-edit-label'
+            }
+          >
             {label}
             {!visible && '(非表示)'}
           </span>
-          <div className="hud-edit-buttons">
-            {id === 'hotbar' && (
-              <button
-                type="button"
-                className="hud-edit-config"
-                title="ホットバー詳細設定"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => setHudDetailOpen('hotbar')}
-              >
-                ⚙
-              </button>
-            )}
-            <button
-              type="button"
-              className="hud-edit-config"
-              title={visible ? '非表示にする' : '表示する'}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => setHudVisibility(id, !visible)}
-            >
-              {visible ? '👁' : '−'}
-            </button>
-          </div>
-        </div>
+          {menuPos && (
+            <HudContextMenu
+              pos={menuPos}
+              onClose={() => setMenuPos(null)}
+              items={[
+                ...(menuItems ?? []),
+                {
+                  label: visible ? '非表示にする' : '表示する',
+                  onClick: () => setHudVisibility(id, !visible),
+                },
+              ]}
+            />
+          )}
+        </>
       )}
     </div>
   )

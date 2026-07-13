@@ -5,6 +5,7 @@ import { useAppStore } from '../../state/store'
 export function HudEditBanner() {
   const setHudEditMode = useAppStore((s) => s.setHudEditMode)
   const resetHudLayout = useAppStore((s) => s.resetHudLayout)
+  const addHotbar = useAppStore((s) => s.addHotbar)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -16,7 +17,10 @@ export function HudEditBanner() {
 
   return (
     <div className="hud-edit-banner">
-      <span>HUD編集中 — 要素をドラッグで移動</span>
+      <span>HUD編集中 — ドラッグで移動 / 右クリックで設定</span>
+      <button type="button" onClick={addHotbar}>
+        ホットバーを追加
+      </button>
       <button type="button" onClick={resetHudLayout}>
         配置をリセット
       </button>

@@ -332,6 +332,8 @@ export class Game {
     sendChat: (text) => this.sendChat(text),
     setHudEditMode: (on) => useAppStore.getState().setHudEditMode(on),
     resetHudLayout: () => useAppStore.getState().resetHudLayout(),
+    openSettings: () => useAppStore.getState().setSettingsOpen(true),
+    openPalette: () => useAppStore.getState().setPaletteOpen(true),
   }
 
   /** A*経路探索して移動を開始する。到達不能ならfalse */
@@ -459,13 +461,16 @@ export class Game {
     // HUD編集モード中はゲーム操作を止める(Escapeでの終了はバナー側が担当)
     if (state.hudEditMode) return
 
-    // ホットバーのカスタムバインドを優先(修飾キー込み完全一致)
-    const index = state.hotbarKeys.findIndex((bind) => bind && matchKeybind(bind, event))
-    if (index >= 0) {
-      event.preventDefault()
-      const slot = state.hotbar[index]
-      if (slot) void this.dispatch(slot.command)
-      return
+    // ホットバーのカスタムバインドを優先(修飾キー込み完全一致)。表示中のバーのみ
+    for (const hotbar of state.hotbars) {
+      if (!hotbar.active) continue
+      const index = hotbar.keys.findIndex((bind) => bind && matchKeybind(bind, event))
+      if (index >= 0) {
+        event.preventDefault()
+        const slot = hotbar.slots[index]
+        if (slot) void this.dispatch(slot.command)
+        return
+      }
     }
 
     if (event.code === 'Space') {

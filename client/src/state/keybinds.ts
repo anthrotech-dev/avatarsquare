@@ -3,8 +3,6 @@
  * KeyboardEvent.code ベース(レイアウト非依存)。
  */
 
-import { HOTBAR_SIZE } from './hotbar'
-
 export interface SlotKeybind {
   code: string
   shift: boolean
@@ -22,6 +20,7 @@ export const RESERVED_KEYS: Array<{ code: string; label: string }> = [
 
 const plain = (code: string): SlotKeybind => ({ code, shift: false, ctrl: false, alt: false })
 
+/** 12スロット分。数字列1〜9,0の続きとして-と^(Minus/Equal) */
 export const DEFAULT_KEYBINDS: (SlotKeybind | null)[] = [
   plain('Digit1'),
   plain('Digit2'),
@@ -33,13 +32,11 @@ export const DEFAULT_KEYBINDS: (SlotKeybind | null)[] = [
   plain('Digit8'),
   plain('Digit9'),
   plain('Digit0'),
+  plain('Minus'),
+  plain('Equal'),
 ]
 
-const STORAGE_KEY = 'avatarsquare:hotbarKeys'
-
-type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
-
-function isKeybind(value: unknown): value is SlotKeybind {
+export function isKeybind(value: unknown): value is SlotKeybind {
   const bind = value as SlotKeybind | null
   return (
     typeof bind?.code === 'string' &&
@@ -47,29 +44,6 @@ function isKeybind(value: unknown): value is SlotKeybind {
     typeof bind?.ctrl === 'boolean' &&
     typeof bind?.alt === 'boolean'
   )
-}
-
-export function loadKeybinds(storage: StorageLike = localStorage): (SlotKeybind | null)[] {
-  try {
-    const raw = storage.getItem(STORAGE_KEY)
-    if (!raw) return [...DEFAULT_KEYBINDS]
-    const parsed = JSON.parse(raw) as unknown[]
-    if (!Array.isArray(parsed)) return [...DEFAULT_KEYBINDS]
-    return Array.from({ length: HOTBAR_SIZE }, (_, i) => (isKeybind(parsed[i]) ? parsed[i] : null))
-  } catch {
-    return [...DEFAULT_KEYBINDS]
-  }
-}
-
-export function saveKeybinds(
-  binds: (SlotKeybind | null)[],
-  storage: StorageLike = localStorage,
-): void {
-  try {
-    storage.setItem(STORAGE_KEY, JSON.stringify(binds.slice(0, HOTBAR_SIZE)))
-  } catch {
-    // 保存できなくてもセッション中は有効
-  }
 }
 
 /** 表示用の短いラベル。例: '1' / 'S+Q' / 'C+A+X' / 'F5'。nullは空文字 */
@@ -80,6 +54,8 @@ export function formatKeybind(bind: SlotKeybind | null): string {
   else if (key.startsWith('Key')) key = key.slice(3)
   else if (key.startsWith('Numpad')) key = `N${key.slice(6)}`
   else if (key === 'Space') key = 'Spc'
+  else if (key === 'Minus') key = '-'
+  else if (key === 'Equal') key = '^'
   const mods = `${bind.ctrl ? 'C+' : ''}${bind.alt ? 'A+' : ''}${bind.shift ? 'S+' : ''}`
   return mods + key
 }
@@ -100,27 +76,30 @@ export function matchKeybind(
 export interface KeybindConflicts {
   /** 予約キーの用途名(衝突なしはnull)。修飾付きなら予約扱いしない */
   reserved: string | null
-  /** 同じバインドを持つ他スロットのindex(なければnull) */
-  slotIndex: number | null
+  /** 同じバインドを持つ他スロット(なければnull)。ホットバー横断で調べる */
+  conflict: { seq: number; index: number } | null
 }
 
 export function findKeybindConflicts(
-  binds: (SlotKeybind | null)[],
-  index: number,
+  hotbars: Array<{ seq: number; keys: (SlotKeybind | null)[] }>,
+  target: { seq: number; index: number },
   candidate: SlotKeybind,
 ): KeybindConflicts {
   const noMods = !candidate.shift && !candidate.ctrl && !candidate.alt
   const reserved = noMods
     ? (RESERVED_KEYS.find((k) => k.code === candidate.code)?.label ?? null)
     : null
-  const slotIndex = binds.findIndex(
-    (bind, i) =>
-      i !== index &&
-      bind !== null &&
-      bind.code === candidate.code &&
-      bind.shift === candidate.shift &&
-      bind.ctrl === candidate.ctrl &&
-      bind.alt === candidate.alt,
-  )
-  return { reserved, slotIndex: slotIndex === -1 ? null : slotIndex }
+  for (const hotbar of hotbars) {
+    const index = hotbar.keys.findIndex(
+      (bind, i) =>
+        !(hotbar.seq === target.seq && i === target.index) &&
+        bind !== null &&
+        bind.code === candidate.code &&
+        bind.shift === candidate.shift &&
+        bind.ctrl === candidate.ctrl &&
+        bind.alt === candidate.alt,
+    )
+    if (index !== -1) return { reserved, conflict: { seq: hotbar.seq, index } }
+  }
+  return { reserved, conflict: null }
 }

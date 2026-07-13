@@ -9,7 +9,7 @@ import { HotbarConfig } from './hud/HotbarConfig'
 import { HudEditBanner } from './hud/HudEditBanner'
 import { HudElement } from './hud/HudElement'
 import { MainMenu, useEscMenu } from './hud/MainMenu'
-import { SettingsButton, SettingsWindow } from './hud/SettingsPanel'
+import { SettingsWindow } from './hud/SettingsPanel'
 import { StatusPanel } from './hud/StatusPanel'
 
 export function App() {
@@ -22,6 +22,9 @@ export function App() {
   const hudDetailOpen = useAppStore((s) => s.hudDetailOpen)
   const menuOpen = useAppStore((s) => s.menuOpen)
   const settingsOpen = useAppStore((s) => s.settingsOpen)
+  const hotbars = useAppStore((s) => s.hotbars)
+  const setHudDetailOpen = useAppStore((s) => s.setHudDetailOpen)
+  const removeHotbar = useAppStore((s) => s.removeHotbar)
   useEscMenu()
 
   useEffect(() => {
@@ -68,22 +71,36 @@ export function App() {
       <HudElement id="status" label="ステータス">
         <StatusPanel />
       </HudElement>
-      <HudElement id="settings" label="設定ボタン">
-        <SettingsButton />
-      </HudElement>
       <HudElement id="chat" label="チャット">
         <ChatWindow />
       </HudElement>
-      <HudElement id="hotbar" label="ホットバー">
-        <Hotbar />
-      </HudElement>
+      {hotbars
+        .filter((h) => h.active)
+        .map((h, i) => ({ hotbar: h, stack: i }))
+        // 逆順で描画: 下のバーの編集ラベル(上に出る)が上のバーに隠れないように
+        .reverse()
+        .map(({ hotbar: h, stack }) => (
+          <HudElement
+            key={h.seq}
+            id={`hotbar-${h.seq}`}
+            label={`ホットバー${h.seq}`}
+            anchorClass="hud-anchor-hotbar"
+            anchorStyle={{ '--hud-stack': stack } as React.CSSProperties}
+            menuItems={[
+              { label: 'キー設定...', onClick: () => setHudDetailOpen(h.seq) },
+              { label: 'このホットバーを削除', onClick: () => removeHotbar(h.seq) },
+            ]}
+          >
+            <Hotbar seq={h.seq} />
+          </HudElement>
+        ))}
       {settingsOpen && (
         <SettingsWindow game={game} onOpenVRM={() => fileInputRef.current?.click()} />
       )}
       {menuOpen && <MainMenu />}
       {paletteOpen && <CommandPalette macroStore={game?.macroStore ?? null} />}
       {hudEditMode && <HudEditBanner />}
-      {hudDetailOpen === 'hotbar' && <HotbarConfig />}
+      {hudDetailOpen !== null && <HotbarConfig seq={hudDetailOpen} />}
       <input
         ref={fileInputRef}
         type="file"

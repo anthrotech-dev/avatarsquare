@@ -1,22 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { HOTBAR_SIZE, swapSlots } from './hotbar'
+import { HOTBAR_SIZE } from './hotbar'
 import {
   DEFAULT_KEYBINDS,
   findKeybindConflicts,
   formatKeybind,
-  loadKeybinds,
   matchKeybind,
   type SlotKeybind,
-  saveKeybinds,
 } from './keybinds'
-
-function makeMemoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
-  const map = new Map<string, string>()
-  return {
-    getItem: (key) => map.get(key) ?? null,
-    setItem: (key, value) => void map.set(key, value),
-  }
-}
 
 const bind = (code: string, mods: Partial<SlotKeybind> = {}): SlotKeybind => ({
   code,
@@ -26,36 +16,13 @@ const bind = (code: string, mods: Partial<SlotKeybind> = {}): SlotKeybind => ({
   ...mods,
 })
 
-describe('keybinds 永続化', () => {
-  it('初回はDigit1..9,0のデフォルト', () => {
-    const binds = loadKeybinds(makeMemoryStorage())
-    expect(binds).toEqual(DEFAULT_KEYBINDS)
-    expect(binds[0]?.code).toBe('Digit1')
-    expect(binds[9]?.code).toBe('Digit0')
-  })
-
-  it('保存内容がラウンドトリップする', () => {
-    const storage = makeMemoryStorage()
-    const binds = loadKeybinds(storage)
-    binds[0] = bind('KeyQ', { shift: true })
-    binds[1] = null
-    saveKeybinds(binds, storage)
-    expect(loadKeybinds(storage)).toEqual(binds)
-  })
-
-  it('壊れたデータはデフォルトに戻る', () => {
-    const storage = makeMemoryStorage()
-    storage.setItem('avatarsquare:hotbarKeys', 'nope')
-    expect(loadKeybinds(storage)).toEqual(DEFAULT_KEYBINDS)
-  })
-
-  it('不正要素はnullとして読み込まれ、常にHOTBAR_SIZE個', () => {
-    const storage = makeMemoryStorage()
-    storage.setItem('avatarsquare:hotbarKeys', JSON.stringify([{ code: 'KeyQ' }, bind('KeyW')]))
-    const binds = loadKeybinds(storage)
-    expect(binds).toHaveLength(HOTBAR_SIZE)
-    expect(binds[0]).toBeNull()
-    expect(binds[1]?.code).toBe('KeyW')
+describe('DEFAULT_KEYBINDS', () => {
+  it('12スロット分。1〜9,0,-,^の並び', () => {
+    expect(DEFAULT_KEYBINDS).toHaveLength(HOTBAR_SIZE)
+    expect(DEFAULT_KEYBINDS[0]?.code).toBe('Digit1')
+    expect(DEFAULT_KEYBINDS[9]?.code).toBe('Digit0')
+    expect(DEFAULT_KEYBINDS[10]?.code).toBe('Minus')
+    expect(DEFAULT_KEYBINDS[11]?.code).toBe('Equal')
   })
 })
 
@@ -66,6 +33,8 @@ describe('formatKeybind', () => {
     expect(formatKeybind(bind('KeyX', { ctrl: true, alt: true }))).toBe('C+A+X')
     expect(formatKeybind(bind('F5'))).toBe('F5')
     expect(formatKeybind(bind('Numpad3'))).toBe('N3')
+    expect(formatKeybind(bind('Minus'))).toBe('-')
+    expect(formatKeybind(bind('Equal'))).toBe('^')
     expect(formatKeybind(null)).toBe('')
   })
 })
@@ -89,31 +58,38 @@ describe('matchKeybind', () => {
 })
 
 describe('findKeybindConflicts', () => {
+  const hotbars = [
+    { seq: 0, keys: [...DEFAULT_KEYBINDS] },
+    { seq: 2, keys: [bind('KeyQ'), null] },
+  ]
+
   it('予約キーは修飾なしのみ警告', () => {
-    const binds = [...DEFAULT_KEYBINDS]
-    expect(findKeybindConflicts(binds, 0, bind('Space')).reserved).toBe('ジャンプ')
-    expect(findKeybindConflicts(binds, 0, bind('Space', { shift: true })).reserved).toBeNull()
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Space')).reserved).toBe(
+      'ジャンプ',
+    )
+    expect(
+      findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Space', { shift: true })).reserved,
+    ).toBeNull()
   })
 
-  it('他スロットとの重複を検出する(自分自身は除外)', () => {
-    const binds = [...DEFAULT_KEYBINDS]
-    expect(findKeybindConflicts(binds, 0, bind('Digit3')).slotIndex).toBe(2)
-    expect(findKeybindConflicts(binds, 2, bind('Digit3')).slotIndex).toBeNull()
-    expect(findKeybindConflicts(binds, 0, bind('KeyZ')).slotIndex).toBeNull()
-  })
-})
-
-describe('swapSlots', () => {
-  it('2スロットの中身を入れ替える', () => {
-    const slots = [{ command: '/a', label: 'A' }, null, { command: '/c', label: 'C' }]
-    const next = swapSlots(slots, 0, 1)
-    expect(next[0]).toBeNull()
-    expect(next[1]).toEqual({ command: '/a', label: 'A' })
-    expect(next).not.toBe(slots)
+  it('同一ホットバー内の重複を検出する(自分自身は除外)', () => {
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Digit3')).conflict).toEqual({
+      seq: 0,
+      index: 2,
+    })
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 2 }, bind('Digit3')).conflict).toBeNull()
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('KeyZ')).conflict).toBeNull()
   })
 
-  it('範囲外indexは無視する', () => {
-    const slots = [{ command: '/a', label: 'A' }]
-    expect(swapSlots(slots, 0, 5)).toEqual(slots)
+  it('別ホットバーとの重複も検出する', () => {
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('KeyQ')).conflict).toEqual({
+      seq: 2,
+      index: 0,
+    })
+    // 別ホットバーの同indexは自分自身ではない
+    expect(findKeybindConflicts(hotbars, { seq: 2, index: 0 }, bind('Digit1')).conflict).toEqual({
+      seq: 0,
+      index: 0,
+    })
   })
 })

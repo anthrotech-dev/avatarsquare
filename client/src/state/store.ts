@@ -1,9 +1,14 @@
 import { create } from 'zustand'
 import { sanitizeName } from '../net/protocol'
-import { type HotbarSlot, loadHotbar, saveHotbar, swapSlots } from './hotbar'
 import {
-  DEFAULT_HUD_LAYOUT,
-  DEFAULT_HUD_VISIBILITY,
+  activateHotbar,
+  deactivateHotbar,
+  type HotbarData,
+  type HotbarSlot,
+  loadHotbars,
+  saveHotbars,
+} from './hotbar'
+import {
   type HudElementId,
   type HudLayout,
   type HudPosition,
@@ -13,7 +18,7 @@ import {
   saveHudLayout,
   saveHudVisibility,
 } from './hudLayout'
-import { loadKeybinds, type SlotKeybind, saveKeybinds } from './keybinds'
+import type { SlotKeybind } from './keybinds'
 
 const NAME_STORAGE_KEY = 'avatarsquare:name'
 
@@ -37,6 +42,12 @@ const CHAT_LOG_LIMIT = 200
 
 let chatId = 0
 
+/** ホットバー内の1スロットの位置 */
+export interface SlotRef {
+  seq: number
+  index: number
+}
+
 interface AppState {
   avatarName: string | null
   /** ユーザーが設定した表示名。空ならVRM名を代用する */
@@ -49,21 +60,20 @@ interface AppState {
   dispatch: ((line: string) => Promise<void>) | null
   /** 現在座標。Gameが0.2秒スロットルで更新する(毎フレーム更新は再レンダ嵐になる) */
   position: { x: number; z: number }
-  hotbar: (HotbarSlot | null)[]
-  /** 各スロットのキーバインド */
-  hotbarKeys: (SlotKeybind | null)[]
+  /** 全ホットバー(非アクティブ=表示から削除済みの設定も保持する) */
+  hotbars: HotbarData[]
   chatLog: ChatEntry[]
   /** マクロ一覧の更新通知(MacroStore.onChangeから) */
   macrosVersion: number
   settingsOpen: boolean
-  /** HUD要素のカスタム配置(null=デフォルト位置) */
+  /** HUD要素のカスタム配置(キーが無い要素はデフォルト位置) */
   hudLayout: HudLayout
-  /** HUD要素の表示/非表示 */
+  /** HUD要素の表示/非表示(キーが無い要素は表示) */
   hudVisibility: HudVisibility
   /** HUD編集モード中はゲーム入力を止め、HUD要素をドラッグ移動できる */
   hudEditMode: boolean
-  /** HUD要素の詳細設定ウィンドウ(現状ホットバーのみ) */
-  hudDetailOpen: 'hotbar' | null
+  /** ホットバー詳細設定ウィンドウの対象seq(null=閉じている) */
+  hudDetailOpen: number | null
   paletteOpen: boolean
   /** Escで開くメインメニュー */
   menuOpen: boolean
@@ -75,9 +85,11 @@ interface AppState {
   setCameraFollow: (cameraFollow: boolean) => void
   setDispatch: (dispatch: AppState['dispatch']) => void
   setPosition: (position: { x: number; z: number }) => void
-  setHotbarSlot: (index: number, slot: HotbarSlot | null) => void
-  swapHotbarSlots: (a: number, b: number) => void
-  setHotbarKey: (index: number, bind: SlotKeybind | null) => void
+  setHotbarSlot: (ref: SlotRef, slot: HotbarSlot | null) => void
+  swapHotbarSlots: (a: SlotRef, b: SlotRef) => void
+  setHotbarKey: (ref: SlotRef, bind: SlotKeybind | null) => void
+  addHotbar: () => void
+  removeHotbar: (seq: number) => void
   appendChat: (entry: Omit<ChatEntry, 'id'>) => void
   bumpMacros: () => void
   setSettingsOpen: (settingsOpen: boolean) => void
@@ -85,9 +97,18 @@ interface AppState {
   setHudVisibility: (id: HudElementId, visible: boolean) => void
   resetHudLayout: () => void
   setHudEditMode: (on: boolean) => void
-  setHudDetailOpen: (id: 'hotbar' | null) => void
+  setHudDetailOpen: (seq: number | null) => void
   setPaletteOpen: (paletteOpen: boolean) => void
   setMenuOpen: (menuOpen: boolean) => void
+}
+
+/** seqのホットバーだけをupdaterで差し替えた新しい配列を返す */
+function updateHotbar(
+  hotbars: HotbarData[],
+  seq: number,
+  updater: (hotbar: HotbarData) => HotbarData,
+): HotbarData[] {
+  return hotbars.map((h) => (h.seq === seq ? updater(h) : h))
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -99,8 +120,7 @@ export const useAppStore = create<AppState>((set) => ({
   cameraFollow: true,
   dispatch: null,
   position: { x: 0, z: 0 },
-  hotbar: loadHotbar(),
-  hotbarKeys: loadKeybinds(),
+  hotbars: loadHotbars(),
   chatLog: [],
   macrosVersion: 0,
   settingsOpen: false,
@@ -126,25 +146,56 @@ export const useAppStore = create<AppState>((set) => ({
   setCameraFollow: (cameraFollow) => set({ cameraFollow }),
   setDispatch: (dispatch) => set({ dispatch }),
   setPosition: (position) => set({ position }),
-  setHotbarSlot: (index, slot) =>
+  setHotbarSlot: (ref, slot) =>
     set((state) => {
-      const hotbar = [...state.hotbar]
-      hotbar[index] = slot
-      saveHotbar(hotbar)
-      return { hotbar }
+      const hotbars = updateHotbar(state.hotbars, ref.seq, (h) => {
+        const slots = [...h.slots]
+        slots[ref.index] = slot
+        return { ...h, slots }
+      })
+      saveHotbars(hotbars)
+      return { hotbars }
     }),
   swapHotbarSlots: (a, b) =>
     set((state) => {
-      const hotbar = swapSlots(state.hotbar, a, b)
-      saveHotbar(hotbar)
-      return { hotbar }
+      const slotAt = (ref: SlotRef) =>
+        state.hotbars.find((h) => h.seq === ref.seq)?.slots[ref.index] ?? null
+      const valueA = slotAt(a)
+      const valueB = slotAt(b)
+      let hotbars = updateHotbar(state.hotbars, a.seq, (h) => {
+        const slots = [...h.slots]
+        slots[a.index] = valueB
+        return { ...h, slots }
+      })
+      hotbars = updateHotbar(hotbars, b.seq, (h) => {
+        const slots = [...h.slots]
+        slots[b.index] = valueA
+        return { ...h, slots }
+      })
+      saveHotbars(hotbars)
+      return { hotbars }
     }),
-  setHotbarKey: (index, bind) =>
+  setHotbarKey: (ref, bind) =>
     set((state) => {
-      const hotbarKeys = [...state.hotbarKeys]
-      hotbarKeys[index] = bind
-      saveKeybinds(hotbarKeys)
-      return { hotbarKeys }
+      const hotbars = updateHotbar(state.hotbars, ref.seq, (h) => {
+        const keys = [...h.keys]
+        keys[ref.index] = bind
+        return { ...h, keys }
+      })
+      saveHotbars(hotbars)
+      return { hotbars }
+    }),
+  addHotbar: () =>
+    set((state) => {
+      const hotbars = activateHotbar(state.hotbars)
+      saveHotbars(hotbars)
+      return { hotbars }
+    }),
+  removeHotbar: (seq) =>
+    set((state) => {
+      const hotbars = deactivateHotbar(state.hotbars, seq)
+      saveHotbars(hotbars)
+      return { hotbars, hudDetailOpen: state.hudDetailOpen === seq ? null : state.hudDetailOpen }
     }),
   appendChat: (entry) =>
     set((state) => ({
@@ -154,7 +205,9 @@ export const useAppStore = create<AppState>((set) => ({
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setHudPosition: (id, pos) =>
     set((state) => {
-      const hudLayout = { ...state.hudLayout, [id]: pos }
+      const hudLayout = { ...state.hudLayout }
+      if (pos) hudLayout[id] = pos
+      else delete hudLayout[id]
       saveHudLayout(hudLayout)
       return { hudLayout }
     }),
@@ -165,8 +218,8 @@ export const useAppStore = create<AppState>((set) => ({
       return { hudVisibility }
     }),
   resetHudLayout: () => {
-    const hudLayout = { ...DEFAULT_HUD_LAYOUT }
-    const hudVisibility = { ...DEFAULT_HUD_VISIBILITY }
+    const hudLayout: HudLayout = {}
+    const hudVisibility: HudVisibility = {}
     saveHudLayout(hudLayout)
     saveHudVisibility(hudVisibility)
     set({ hudLayout, hudVisibility })

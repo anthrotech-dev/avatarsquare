@@ -5,32 +5,12 @@ import { getTokenEndpoint, saveTokenEndpoint } from '../../net/config'
 import { useAppStore } from '../../state/store'
 import { FloatingWindow } from './FloatingWindow'
 
-/**
- * 設定を開く⚙ボタン。HUD要素として移動・非表示にできる
- * (非表示にしてもEsc→メニュー→設定から開ける)。
- */
-export function SettingsButton() {
-  const settingsOpen = useAppStore((s) => s.settingsOpen)
-  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen)
-
-  return (
-    <button
-      type="button"
-      className="hud-settings-toggle"
-      title="設定"
-      onClick={() => setSettingsOpen(!settingsOpen)}
-    >
-      ⚙
-    </button>
-  )
-}
-
 interface Props {
   game: Game | null
   onOpenVRM: () => void
 }
 
-/** 設定ウィンドウ。⚙ボタンまたはメニュー(Esc)から開く */
+/** 設定ウィンドウ。/settings(ホットバー・メニュー(Esc))から開く */
 export function SettingsWindow({ game, onOpenVRM }: Props) {
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen)
   const cameraFollow = useAppStore((s) => s.cameraFollow)
@@ -121,10 +101,13 @@ export function SettingsWindow({ game, onOpenVRM }: Props) {
         <div className="hud-settings-section hud-settings-hints">
           <div>右クリック: 移動 / ホイール: ズーム / Space: ジャンプ / Esc: メニュー</div>
           <div>
-            1〜9,0:
-            ホットバー(メニューのコマンドパレットからドラッグで割当、スロット間はドラッグで入替)
+            1〜9,0,-,^:
+            ホットバー(コマンドパレット(/palette)からドラッグで割当、スロット間はドラッグで入替)
           </div>
-          <div>HUDレイアウト編集(/hud edit)で要素の移動・非表示とキー割当変更ができます</div>
+          <div>
+            HUDレイアウト編集(/hud
+            edit)で要素の移動、ホットバーの追加・削除、右クリックで非表示・キー割当ができます
+          </div>
           <div>Y: カメラ追従/固定 / 固定中は画面端で視点スクロール</div>
           <div>Enter: チャット入力 / コマンドは「/」始まり(/help で一覧)</div>
           <div>.vrm(アバター) .vrma/.fbx(モーション)をドロップで読み込み</div>

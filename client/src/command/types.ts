@@ -25,6 +25,10 @@ export interface GameCommandAPI {
   setHudEditMode(on: boolean): void
   /** HUD要素の配置をデフォルトに戻す */
   resetHudLayout(): void
+  /** 設定ウィンドウを開く */
+  openSettings(): void
+  /** コマンドパレットを開く */
+  openPalette(): void
 }
 
 export interface CommandOutput {

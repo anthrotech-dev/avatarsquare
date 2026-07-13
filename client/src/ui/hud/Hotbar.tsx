@@ -2,24 +2,25 @@ import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine'
 import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 import { useEffect, useRef, useState } from 'react'
 import type { HotbarSlot } from '../../state/hotbar'
-import { formatKeybind } from '../../state/keybinds'
+import { formatKeybind, type SlotKeybind } from '../../state/keybinds'
 import { useAppStore } from '../../state/store'
 import { isHotbarSlotData, isPaletteItemData } from './dnd'
 
 interface SlotProps {
+  seq: number
   index: number
   slot: HotbarSlot | null
+  keybind: SlotKeybind | null
 }
 
 /**
  * ホットバーの1スロット。クリックで実行。
- * 中身ありスロットはドラッグ元(スロット間=スワップ、スロット外=削除)、
+ * 中身ありスロットはドラッグ元(スロット間=スワップ(別ホットバーでも可)、スロット外=削除)、
  * 全スロットはパレット/他スロットからのドロップ先。
  */
-function HotbarSlotButton({ index, slot }: SlotProps) {
+function HotbarSlotButton({ seq, index, slot, keybind }: SlotProps) {
   const ref = useRef<HTMLButtonElement>(null)
   const dispatch = useAppStore((s) => s.dispatch)
-  const keybind = useAppStore((s) => s.hotbarKeys[index])
   const [over, setOver] = useState(false)
   const [dragging, setDragging] = useState(false)
 
@@ -33,12 +34,12 @@ function HotbarSlotButton({ index, slot }: SlotProps) {
         ? [
             draggable({
               element: el,
-              getInitialData: () => ({ type: 'hotbar-slot', index, slot }),
+              getInitialData: () => ({ type: 'hotbar-slot', seq, index, slot }),
               onDragStart: () => setDragging(true),
               onDrop: ({ location }) => {
                 setDragging(false)
                 // どのドロップ先にも落ちなかった=スロットから外す
-                if (location.current.dropTargets.length === 0) setHotbarSlot(index, null)
+                if (location.current.dropTargets.length === 0) setHotbarSlot({ seq, index }, null)
               },
             }),
           ]
@@ -47,20 +48,21 @@ function HotbarSlotButton({ index, slot }: SlotProps) {
         element: el,
         canDrop: ({ source }) =>
           isPaletteItemData(source.data) ||
-          (isHotbarSlotData(source.data) && source.data.index !== index),
+          (isHotbarSlotData(source.data) &&
+            !(source.data.seq === seq && source.data.index === index)),
         onDragEnter: () => setOver(true),
         onDragLeave: () => setOver(false),
         onDrop: ({ source }) => {
           setOver(false)
           if (isPaletteItemData(source.data)) {
-            setHotbarSlot(index, source.data.slot)
+            setHotbarSlot({ seq, index }, source.data.slot)
           } else if (isHotbarSlotData(source.data)) {
-            swapHotbarSlots(source.data.index, index)
+            swapHotbarSlots({ seq: source.data.seq, index: source.data.index }, { seq, index })
           }
         },
       }),
     )
-  }, [slot, index])
+  }, [slot, seq, index])
 
   const classes = ['hud-slot']
   if (!slot) classes.push('empty')
@@ -75,7 +77,7 @@ function HotbarSlotButton({ index, slot }: SlotProps) {
       title={
         slot
           ? `${slot.command}(ドラッグで移動 / スロット外へで削除)`
-          : 'パレット(+)からドラッグで割り当て'
+          : 'コマンドパレット(/palette)からドラッグで割り当て'
       }
       onClick={() => {
         if (slot) void dispatch?.(slot.command)
@@ -87,16 +89,17 @@ function HotbarSlotButton({ index, slot }: SlotProps) {
   )
 }
 
-/** 画面下部中央のホットバー。割当はメニュー(Esc)のコマンドパレットから */
-export function Hotbar() {
-  const hotbar = useAppStore((s) => s.hotbar)
+/** ホットバー1本分。割当はコマンドパレット(/palette)やメニュー(Esc)からドラッグで */
+export function Hotbar({ seq }: { seq: number }) {
+  const hotbar = useAppStore((s) => s.hotbars.find((h) => h.seq === seq))
+  if (!hotbar) return null
 
   return (
     <div className="hud-hotbar">
       <div className="hud-hotbar-slots">
-        {hotbar.map((slot, i) => (
+        {hotbar.slots.map((slot, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: スロットは固定長・並べ替えなし
-          <HotbarSlotButton key={i} index={i} slot={slot} />
+          <HotbarSlotButton key={i} seq={seq} index={i} slot={slot} keybind={hotbar.keys[i]} />
         ))}
       </div>
     </div>

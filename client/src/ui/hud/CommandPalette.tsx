@@ -1,10 +1,10 @@
-import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { MacroStore } from '../../command/macros'
 import type { HotbarSlot } from '../../state/hotbar'
 import { useAppStore } from '../../state/store'
 import { EMOTES } from './emotes'
 import { FloatingWindow } from './FloatingWindow'
+import { PaletteItem } from './PaletteItem'
 
 /** ホットバーに割り当てられる組み込みコマンドの一覧 */
 const ACTIONS: HotbarSlot[] = [
@@ -21,35 +21,9 @@ const ACTIONS: HotbarSlot[] = [
   { command: '/zoom 9', label: 'ズーム標準' },
   { command: '/zoom 20', label: 'ズーム引き' },
   { command: '/hud edit', label: 'HUD編集' },
+  { command: '/settings', label: '設定' },
   { command: '/help', label: 'ヘルプ' },
 ]
-
-/** ドラッグしてホットバーへ割り当てる1項目 */
-function PaletteItem({ slot }: { slot: HotbarSlot }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [dragging, setDragging] = useState(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    return draggable({
-      element: el,
-      getInitialData: () => ({ type: 'palette-item', slot }),
-      onDragStart: () => setDragging(true),
-      onDrop: () => setDragging(false),
-    })
-  }, [slot])
-
-  return (
-    <div
-      ref={ref}
-      className={dragging ? 'hud-palette-item dragging' : 'hud-palette-item'}
-      title={slot.command}
-    >
-      {slot.label}
-    </div>
-  )
-}
 
 interface Props {
   macroStore: MacroStore | null
@@ -57,7 +31,7 @@ interface Props {
 
 /**
  * コマンドパレット。項目をホットバーのスロットへドラッグ&ドロップして登録する。
- * プレイ中いつでも開ける(ホットバー右端の「+」)。
+ * /palette またはメニュー(Esc)から開く。
  */
 export function CommandPalette({ macroStore }: Props) {
   const setPaletteOpen = useAppStore((s) => s.setPaletteOpen)
@@ -97,7 +71,7 @@ export function CommandPalette({ macroStore }: Props) {
         <div className="hud-palette-section">マクロ</div>
         <div className="hud-palette-grid">
           {macros.length === 0 ? (
-            <div className="hud-palette-empty">設定画面(⚙)でマクロを作成できます</div>
+            <div className="hud-palette-empty">設定(/settings)でマクロを作成できます</div>
           ) : (
             macros.map((macro) => (
               <PaletteItem

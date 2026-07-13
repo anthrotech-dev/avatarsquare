@@ -228,6 +228,20 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       },
     },
     {
+      name: 'settings',
+      description: '設定ウィンドウを開く',
+      execute(ctx) {
+        ctx.api.openSettings()
+      },
+    },
+    {
+      name: 'palette',
+      description: 'コマンドパレットを開く',
+      execute(ctx) {
+        ctx.api.openPalette()
+      },
+    },
+    {
       name: 'help',
       description: 'コマンド一覧・使い方を表示する',
       usage: '/help [name]',

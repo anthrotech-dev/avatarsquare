@@ -1,36 +1,21 @@
 /**
- * HUD要素の配置の永続化。null = CSSデフォルト位置(アンカー)。
- * 位置はビューポート左上からのpxで保存し、描画時にクランプする
- * (保存値自体は解像度変更で書き換えない)。
+ * HUD要素の配置の永続化。キーは要素ID('chat'/'status'/'hotbar-<seq>')で、
+ * ホットバーが動的に増減するため固定リストでは絞らず値の形だけ検証する。
+ * 位置が無い要素はCSSデフォルト位置(アンカー)。位置はビューポート左上からの
+ * pxで保存し、描画時にクランプする(保存値自体は解像度変更で書き換えない)。
  */
 
-export type HudElementId = 'hotbar' | 'chat' | 'status' | 'settings'
+export type HudElementId = string
 
 export interface HudPosition {
   x: number
   y: number
 }
 
-export type HudLayout = Record<HudElementId, HudPosition | null>
+export type HudLayout = Record<HudElementId, HudPosition>
 
-/** 各HUD要素の表示/非表示。非表示要素はHUD編集モード中だけ半透明で見える */
+/** 各HUD要素の表示/非表示(未記録は表示)。非表示要素はHUD編集モード中だけ半透明で見える */
 export type HudVisibility = Record<HudElementId, boolean>
-
-export const HUD_ELEMENT_IDS: HudElementId[] = ['hotbar', 'chat', 'status', 'settings']
-
-export const DEFAULT_HUD_LAYOUT: HudLayout = {
-  hotbar: null,
-  chat: null,
-  status: null,
-  settings: null,
-}
-
-export const DEFAULT_HUD_VISIBILITY: HudVisibility = {
-  hotbar: true,
-  chat: true,
-  status: true,
-  settings: true,
-}
 
 const STORAGE_KEY = 'avatarsquare:hudLayout'
 const VISIBILITY_KEY = 'avatarsquare:hudVisibility'
@@ -42,18 +27,28 @@ function isPosition(value: unknown): value is HudPosition {
   return typeof pos?.x === 'number' && typeof pos?.y === 'number'
 }
 
+/** 単一ホットバー時代のキー'hotbar'を'hotbar-0'に読み替える */
+function migrateLegacyHotbarKey<T>(record: Record<string, T>): Record<string, T> {
+  if ('hotbar' in record) {
+    if (!('hotbar-0' in record)) record['hotbar-0'] = record.hotbar
+    delete record.hotbar
+  }
+  return record
+}
+
 export function loadHudLayout(storage: StorageLike = localStorage): HudLayout {
-  const layout: HudLayout = { ...DEFAULT_HUD_LAYOUT }
   try {
     const raw = storage.getItem(STORAGE_KEY)
-    if (!raw) return layout
+    if (!raw) return {}
     const parsed = JSON.parse(raw) as Record<string, unknown>
-    for (const id of HUD_ELEMENT_IDS) {
-      if (isPosition(parsed?.[id])) layout[id] = parsed[id] as HudPosition
+    if (typeof parsed !== 'object' || parsed === null) return {}
+    const layout: HudLayout = {}
+    for (const [id, value] of Object.entries(parsed)) {
+      if (isPosition(value)) layout[id] = value
     }
-    return layout
+    return migrateLegacyHotbarKey(layout)
   } catch {
-    return layout
+    return {}
   }
 }
 
@@ -66,17 +61,18 @@ export function saveHudLayout(layout: HudLayout, storage: StorageLike = localSto
 }
 
 export function loadHudVisibility(storage: StorageLike = localStorage): HudVisibility {
-  const visibility: HudVisibility = { ...DEFAULT_HUD_VISIBILITY }
   try {
     const raw = storage.getItem(VISIBILITY_KEY)
-    if (!raw) return visibility
+    if (!raw) return {}
     const parsed = JSON.parse(raw) as Record<string, unknown>
-    for (const id of HUD_ELEMENT_IDS) {
-      if (typeof parsed?.[id] === 'boolean') visibility[id] = parsed[id] as boolean
+    if (typeof parsed !== 'object' || parsed === null) return {}
+    const visibility: HudVisibility = {}
+    for (const [id, value] of Object.entries(parsed)) {
+      if (typeof value === 'boolean') visibility[id] = value
     }
-    return visibility
+    return migrateLegacyHotbarKey(visibility)
   } catch {
-    return visibility
+    return {}
   }
 }
 

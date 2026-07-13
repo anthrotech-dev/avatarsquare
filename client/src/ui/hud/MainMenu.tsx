@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
+import type { HotbarSlot } from '../../state/hotbar'
 import { useAppStore } from '../../state/store'
 import { FloatingWindow } from './FloatingWindow'
+import { PaletteItem } from './PaletteItem'
 
 /**
  * Escで開閉するメインメニュー。各種ウィンドウ・モードへの入口。
@@ -25,16 +27,16 @@ export function useEscMenu(): void {
   }, [])
 }
 
+/** 各項目はコマンド。クリックで実行、ドラッグでホットバーへ登録できる */
+const MENU_ITEMS: HotbarSlot[] = [
+  { command: '/palette', label: 'コマンドパレット' },
+  { command: '/hud edit', label: 'HUDレイアウト編集' },
+  { command: '/settings', label: '設定' },
+]
+
 export function MainMenu() {
   const setMenuOpen = useAppStore((s) => s.setMenuOpen)
-  const setPaletteOpen = useAppStore((s) => s.setPaletteOpen)
-  const setHudEditMode = useAppStore((s) => s.setHudEditMode)
-  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen)
-
-  const openAnd = (fn: () => void) => () => {
-    setMenuOpen(false)
-    fn()
-  }
+  const dispatch = useAppStore((s) => s.dispatch)
 
   return (
     <FloatingWindow
@@ -43,18 +45,17 @@ export function MainMenu() {
       initialPos={{ x: window.innerWidth / 2 - 190, y: window.innerHeight / 2 - 140 }}
     >
       <div className="hud-menu">
-        <button type="button" onClick={openAnd(() => setPaletteOpen(true))}>
-          コマンドパレット
-        </button>
-        <button type="button" onClick={openAnd(() => setHudEditMode(true))}>
-          HUDレイアウト編集
-        </button>
-        <button type="button" onClick={openAnd(() => setSettingsOpen(true))}>
-          設定
-        </button>
-        <button type="button" onClick={() => setMenuOpen(false)}>
-          閉じる (Esc)
-        </button>
+        {MENU_ITEMS.map((item) => (
+          <PaletteItem
+            key={item.command}
+            slot={item}
+            className="hud-menu-item"
+            onActivate={() => {
+              setMenuOpen(false)
+              void dispatch?.(item.command)
+            }}
+          />
+        ))}
       </div>
     </FloatingWindow>
   )
