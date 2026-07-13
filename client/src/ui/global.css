@@ -67,6 +67,29 @@ body,
   background: #3a4a5f;
 }
 
+.overlay .endpoint {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.overlay .endpoint input {
+  pointer-events: auto;
+  flex: 1;
+  min-width: 240px;
+  padding: 4px 8px;
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  background: #1a202c;
+  color: #e8ecf2;
+  font-size: 12px;
+}
+
+.overlay .endpoint button {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
 .drop-cover {
   position: absolute;
   inset: 0;

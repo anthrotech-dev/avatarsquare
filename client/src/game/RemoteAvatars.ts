@@ -89,6 +89,10 @@ export class RemoteAvatars {
     this.getOrCreate(id).setVideo(video)
   }
 
+  clear(): void {
+    for (const id of [...this.avatars.keys()]) this.remove(id)
+  }
+
   remove(id: string): void {
     const avatar = this.avatars.get(id)
     if (!avatar) return

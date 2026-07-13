@@ -42,7 +42,7 @@ export class Game {
   private readonly focus = new THREE.Vector3()
   private readonly streamer = new AvatarStreamer()
   private readonly remotes: RemoteAvatars
-  private readonly net = new NetClient()
+  private net = new NetClient()
   private posAccum = 0
   private disposed = false
 
@@ -81,14 +81,25 @@ export class Game {
     void this.connectNet()
   }
 
+  /** エンドポイント変更時などに接続を張り直す */
+  async reconnect(): Promise<void> {
+    this.net.disconnect()
+    this.remotes.clear()
+    useAppStore.getState().setPeers(0)
+    await this.connectNet()
+  }
+
   private async connectNet(): Promise<void> {
     const { setNetStatus, setPeers } = useAppStore.getState()
     const identity = `user-${Math.random().toString(36).slice(2, 8)}`
     // ?room=xxx で入室先を切り替えられる(既定はsquare)
     const roomName = new URLSearchParams(location.search).get('room') ?? ROOM_NAME
     setNetStatus('接続中...')
+    // 接続ごとに新しいクライアントを作り、再接続と競合した古い試行は破棄する
+    const net = new NetClient()
+    this.net = net
     try {
-      await this.net.connect(roomName, identity, this.streamer.captureTrack(), {
+      await net.connect(roomName, identity, this.streamer.captureTrack(), {
         onRemoteVideo: (id, video) => this.remotes.setVideo(id, video),
         onRemoteMessage: (id, message) => {
           if (message.t === 'pos') this.remotes.applyMessage(id, message)
@@ -96,13 +107,14 @@ export class Game {
         onRemoteLeft: (id) => this.remotes.remove(id),
         onPeersChanged: (count) => setPeers(count),
       })
-      // StrictModeの二重マウント等で接続完了前にdisposeされた場合は切断する
-      if (this.disposed) {
-        this.net.disconnect()
+      // dispose済み・別の接続に置き換わった後に完了した場合は切断する
+      if (this.disposed || this.net !== net) {
+        net.disconnect()
         return
       }
       setNetStatus(`接続中: ${roomName} (${identity})`)
     } catch (err) {
+      if (this.disposed || this.net !== net) return
       setNetStatus(`オフライン (${err instanceof Error ? err.message : String(err)})`)
     }
   }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { animationKindFromFilename } from '../avatar/animationLoaders'
 import { Game } from '../game/Game'
+import { getTokenEndpoint, saveTokenEndpoint } from '../net/config'
 import { useAppStore } from '../state/store'
 
 export function App() {
@@ -8,6 +9,7 @@ export function App() {
   const gameRef = useRef<Game | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
+  const [endpoint, setEndpoint] = useState(getTokenEndpoint)
   const avatarName = useAppStore((s) => s.avatarName)
   const status = useAppStore((s) => s.status)
   const netStatus = useAppStore((s) => s.netStatus)
@@ -61,6 +63,24 @@ export function App() {
         {avatarName && <div>アバター: {avatarName}</div>}
         <div className="hint">
           {netStatus} / 他{peers}人
+        </div>
+        <div className="endpoint">
+          <input
+            value={endpoint}
+            spellCheck={false}
+            onChange={(e) => setEndpoint(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const saved = saveTokenEndpoint(endpoint)
+              setEndpoint(saved)
+              void gameRef.current?.reconnect()
+            }}
+          >
+            再接続
+          </button>
         </div>
         {status && <div className="status">{status}</div>}
         <button type="button" onClick={() => fileInputRef.current?.click()}>

@@ -1,7 +1,6 @@
 import { type RemoteParticipant, type RemoteTrack, Room, RoomEvent, Track } from 'livekit-client'
+import { getTokenEndpoint } from './config'
 import { decodeMessage, encodeMessage, type GameMessage } from './protocol'
-
-const TOKEN_URL = import.meta.env.VITE_TOKEN_URL ?? 'http://localhost:8787/token'
 
 export interface NetEvents {
   onRemoteVideo(id: string, video: HTMLVideoElement): void
@@ -24,7 +23,7 @@ export class NetClient {
 
   async connect(roomName: string, identity: string, track: MediaStreamTrack, events: NetEvents) {
     const res = await fetch(
-      `${TOKEN_URL}?room=${encodeURIComponent(roomName)}&name=${encodeURIComponent(identity)}`,
+      `${getTokenEndpoint()}?room=${encodeURIComponent(roomName)}&name=${encodeURIComponent(identity)}`,
     )
     if (!res.ok) throw new Error(`トークン取得に失敗しました (${res.status})`)
     const { token, url } = (await res.json()) as { token: string; url: string }

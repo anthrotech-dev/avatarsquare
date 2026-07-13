@@ -42,6 +42,10 @@ cd client && pnpm dev     # クライアント (Vite)
 ```
 
 ブラウザで開くと自動でルーム`square`に入室します(`?room=xxx`で変更可)。
+
+トークンサーバーのエンドポイントは既定で`https://avatar-square.tunnel.anthrotech.dev/token`に接続します。
+画面上の入力欄(localStorageに保存)、`?endpoint=`クエリ、環境変数`VITE_TOKEN_URL`のいずれでも変更できます
+(優先順: クエリ > 入力欄 > 環境変数 > 既定値)。ローカル開発時は`http://localhost:8787/token`を指定してください。
 `.vrm`をドラッグ&ドロップでアバター読み込み、`.vrma`/Mixamo系`.fbx`でモーション登録ができます。
 
 ## Phase 6. ゲーム機能の実装
