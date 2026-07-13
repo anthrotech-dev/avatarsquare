@@ -327,6 +327,7 @@ export class Game {
       z: this.avatar.position.z,
       yaw: this.avatar.yaw,
     }),
+    getCursorTarget: () => this.cursorGroundPoint(),
     // ネームプレート更新とprofile送信はstore購読(refreshNameplate)に一元化されている
     setName: (name) => useAppStore.getState().setPlayerName(name),
     sendChat: (text) => this.sendChat(text),
@@ -524,6 +525,13 @@ export class Game {
     if (!hit) return
     // 右クリック移動もコマンド経由(すべての操作をコマンドに統一)
     void this.dispatch(`/move ${hit.x.toFixed(2)} ${hit.z.toFixed(2)}`)
+  }
+
+  /** 現在のマウスカーソル直下の地面座標。方向指定スキルの狙い先に使う */
+  private cursorGroundPoint(): { x: number; z: number } | null {
+    if (!this.pointer) return null
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    return this.groundPointAt(this.pointer.x + rect.left, this.pointer.y + rect.top)
   }
 
   /** スクリーン座標から地面上のワールド座標を求める */

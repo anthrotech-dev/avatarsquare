@@ -18,13 +18,16 @@ function forwardTarget(ctx: CommandContext, distance: number): { x: number; z: n
   return { x: x + Math.sin(yaw) * distance, z: z + Math.cos(yaw) * distance }
 }
 
-/** 引数で対象地点を受け取る。省略時は前方distance */
+/**
+ * 引数で対象地点を受け取る。省略時はカーソル直下の地面座標
+ * (ホットバー・キーボード発動で自動的に狙い先が入る)。カーソルが取れなければ前方distance
+ */
 function resolveTarget(
   ctx: CommandContext,
   args: string[],
   distance: number,
 ): { x: number; z: number } | null {
-  if (args.length === 0) return forwardTarget(ctx, distance)
+  if (args.length === 0) return ctx.api.getCursorTarget() ?? forwardTarget(ctx, distance)
   const x = parseNumber(args[0])
   const z = parseNumber(args[1])
   if (x === null || z === null) return null
@@ -71,7 +74,7 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
     },
     {
       name: 'shoot',
-      description: '弾を撃つ。座標省略時は前方へ',
+      description: '弾を撃つ。座標省略時はカーソルの方向へ',
       usage: '/shoot [x z]',
       execute(ctx, args) {
         const target = resolveTarget(ctx, args, FORWARD_TARGET_DISTANCE)

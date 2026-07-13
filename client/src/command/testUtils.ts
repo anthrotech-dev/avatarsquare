@@ -20,6 +20,7 @@ export function makeTestContext(overrides: Partial<GameCommandAPI> = {}): {
     snapCamera: vi.fn(),
     setZoom: vi.fn(),
     getPosition: vi.fn(() => ({ x: 0, z: 0, yaw: 0 })),
+    getCursorTarget: vi.fn(() => null),
     setName: vi.fn(),
     sendChat: vi.fn(),
     setHudEditMode: vi.fn(),

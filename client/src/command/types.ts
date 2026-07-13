@@ -17,6 +17,8 @@ export interface GameCommandAPI {
   snapCamera(): void
   setZoom(zoom: number): void
   getPosition(): { x: number; z: number; yaw: number }
+  /** マウスカーソル直下の地面座標。カーソルが画面外などで取れなければnull */
+  getCursorTarget(): { x: number; z: number } | null
   /** 表示名(ネームプレート)を設定する */
   setName(name: string): void
   /** チャットを送信する(頭上の吹き出し表示+全員へ配信) */
