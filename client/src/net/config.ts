@@ -3,17 +3,24 @@
  * 優先順: ?endpoint=クエリ > localStorage(UIから編集) > VITE_TOKEN_URL > デフォルト
  */
 
-export const DEFAULT_ENDPOINT = 'https://avatar-square.tunnel.anthrotech.dev/token'
+// WebRTCのメディア(UDP/TCP)が通る必要があるためHTTPトンネルでは開発できない。
+// 開発サーバー上でLiveKit+トークンAPIを直接ポート公開する構成が既定。
+export const DEFAULT_ENDPOINT = 'http://tunnel.anthrotech.dev:8787/token'
 
+const DEFAULT_PORT = '8787'
 const STORAGE_KEY = 'avatarsquare:endpoint'
 
-/** ホスト名だけの入力なども https://host/token に補完する。不正なら null */
+/**
+ * ホスト名だけの入力を http://host:8787/token に補完する。不正なら null。
+ * スキームを明示した場合はポートも入力どおりに扱う。
+ */
 export function normalizeEndpoint(input: string): string | null {
   const raw = input.trim()
   if (!raw) return null
-  const withScheme = raw.includes('://') ? raw : `https://${raw}`
+  const hasScheme = raw.includes('://')
   try {
-    const url = new URL(withScheme)
+    const url = new URL(hasScheme ? raw : `http://${raw}`)
+    if (!hasScheme && url.port === '') url.port = DEFAULT_PORT
     if (url.pathname === '/' || url.pathname === '') url.pathname = '/token'
     return url.toString()
   } catch {

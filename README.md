@@ -36,17 +36,25 @@ HUD（Head-Up Display）を実装します。リファレンスとしては、FF
 ### 開発環境の起動
 
 ```sh
-docker compose up -d      # LiveKit (SFU) + トークン発行API
+docker compose up -d      # LiveKit (SFU)
+go run ./server &         # トークン発行API (server/ にて、ポート8787)
 cd client && pnpm dev     # クライアント (Vite)
 ```
 
-トークンAPIだけ手元で動かしたい場合は `go run ./server` でも起動できます(ポート8787)。
+WebRTCのメディア(UDP 7882 / TCP 7881)が通る必要があるため、HTTPのみのトンネルでは動きません。
+開発サーバーへ配置する場合はLinuxバイナリを転送します:
+
+```sh
+cd server && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o token-server .
+# 転送先で: LIVEKIT_URL=ws://tunnel.anthrotech.dev:7880 ./token-server
+# LiveKit側は compose.yaml を転送し、commandに --node-ip <公開IP> を追加して起動
+```
 
 ブラウザで開くと自動でルーム`square`に入室します(`?room=xxx`で変更可)。
 
-トークンサーバーのエンドポイントは既定で`https://avatar-square.tunnel.anthrotech.dev/token`に接続します。
+トークンサーバーのエンドポイントは既定で`http://tunnel.anthrotech.dev:8787/token`に接続します。
 画面上の入力欄(localStorageに保存)、`?endpoint=`クエリ、環境変数`VITE_TOKEN_URL`のいずれでも変更できます
-(優先順: クエリ > 入力欄 > 環境変数 > 既定値)。ローカル開発時は`http://localhost:8787/token`を指定してください。
+(優先順: クエリ > 入力欄 > 環境変数 > 既定値)。ローカル開発時は`localhost`(→`http://localhost:8787/token`に補完)を指定してください。
 `.vrm`をドラッグ&ドロップでアバター読み込み、`.vrma`/Mixamo系`.fbx`でモーション登録ができます。
 
 ## Phase 6. ゲーム機能の実装
