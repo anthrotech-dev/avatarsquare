@@ -19,6 +19,9 @@ const ZOOM_DEFAULT = 9
 const MARKER_LIFETIME = 0.6 // 秒
 const ROOM_NAME = 'square'
 const POS_SEND_INTERVAL = 1 / 15 // 秒
+const EDGE_MARGIN = 32 // px。この幅にカーソルが入るとその方向へスクロール
+const EDGE_PAN_SPEED = 2.0 // ズーム(半画面高さ)1あたりの移動速度(unit/s)
+const PAN_LIMIT = 28 // 視点移動できる範囲(マップ端まで)
 
 interface ClickMarker {
   mesh: THREE.Mesh
@@ -40,6 +43,8 @@ export class Game {
   private zoom = ZOOM_DEFAULT
   private zoomTarget = ZOOM_DEFAULT
   private readonly focus = new THREE.Vector3()
+  private followAvatar = true
+  private pointer: { x: number; y: number } | null = null
   private readonly streamer = new AvatarStreamer()
   private readonly remotes: RemoteAvatars
   private net = new NetClient()
@@ -74,6 +79,9 @@ export class Game {
 
     this.renderer.domElement.addEventListener('contextmenu', this.onContextMenu)
     this.renderer.domElement.addEventListener('wheel', this.onWheel, { passive: false })
+    this.renderer.domElement.addEventListener('mousemove', this.onMouseMove)
+    this.renderer.domElement.addEventListener('mouseleave', this.onMouseLeave)
+    window.addEventListener('keydown', this.onKeyDown)
   }
 
   start(): void {
@@ -169,6 +177,9 @@ export class Game {
     this.renderer.setAnimationLoop(null)
     this.renderer.domElement.removeEventListener('contextmenu', this.onContextMenu)
     this.renderer.domElement.removeEventListener('wheel', this.onWheel)
+    this.renderer.domElement.removeEventListener('mousemove', this.onMouseMove)
+    this.renderer.domElement.removeEventListener('mouseleave', this.onMouseLeave)
+    window.removeEventListener('keydown', this.onKeyDown)
     this.resizeObserver.disconnect()
     this.renderer.dispose()
     this.renderer.domElement.remove()
@@ -184,6 +195,40 @@ export class Game {
     sun.position.set(20, 40, 25)
     sun.layers.enable(AVATAR_LAYER)
     this.scene.add(sun)
+  }
+
+  private onMouseMove = (event: MouseEvent): void => {
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    this.pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+  }
+
+  private onMouseLeave = (): void => {
+    this.pointer = null
+  }
+
+  private onKeyDown = (event: KeyboardEvent): void => {
+    if (event.code !== 'Space') return
+    event.preventDefault()
+    this.followAvatar = true
+  }
+
+  /** カーソルが画面端にあるとき、その方向へ視界をスクロールする */
+  private updateEdgePan(delta: number): void {
+    if (!this.pointer) return
+    const { clientWidth, clientHeight } = this.container
+    let dx = 0
+    let dz = 0
+    if (this.pointer.x < EDGE_MARGIN) dx -= 1
+    else if (this.pointer.x > clientWidth - EDGE_MARGIN) dx += 1
+    if (this.pointer.y < EDGE_MARGIN) dz -= 1
+    else if (this.pointer.y > clientHeight - EDGE_MARGIN) dz += 1
+    if (dx === 0 && dz === 0) return
+
+    this.followAvatar = false
+    const speed = (this.zoom * EDGE_PAN_SPEED * delta) / Math.hypot(dx, dz)
+    // カメラは-Z方向を見下ろす固定アングルなので、画面上=ワールド-Z、画面右=+X
+    this.focus.x = THREE.MathUtils.clamp(this.focus.x + dx * speed, -PAN_LIMIT, PAN_LIMIT)
+    this.focus.z = THREE.MathUtils.clamp(this.focus.z + dz * speed, -PAN_LIMIT, PAN_LIMIT)
   }
 
   private onWheel = (event: WheelEvent): void => {
@@ -262,7 +307,10 @@ export class Game {
 
     // ズームとカメラ追従を滑らかに補間
     this.zoom += (this.zoomTarget - this.zoom) * Math.min(1, 10 * delta)
-    this.focus.lerp(this.avatar.position, 1 - Math.exp(-8 * delta))
+    this.updateEdgePan(delta)
+    if (this.followAvatar) {
+      this.focus.lerp(this.avatar.position, 1 - Math.exp(-8 * delta))
+    }
     this.updateCamera()
     this.updateProjection()
 

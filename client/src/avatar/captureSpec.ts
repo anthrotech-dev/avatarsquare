@@ -14,8 +14,8 @@ export const CAPTURE_WORLD_H = 2.4
 /** キャプチャ枠の中心(アバター足元からの高さ) */
 export const CAPTURE_CENTER_Y = 1.1
 
-/** 片側(カラー/マスク)の解像度。キャンバス全体は横2倍 */
-export const CAPTURE_PX_W = 320
-export const CAPTURE_PX_H = 384
+/** 片側(カラー/マスク)の解像度。キャンバス全体は横2倍。縦横比はワールド寸法に合わせる */
+export const CAPTURE_PX_W = 600
+export const CAPTURE_PX_H = 720
 
 export const CAPTURE_FPS = 20

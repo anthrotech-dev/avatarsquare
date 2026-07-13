@@ -58,6 +58,7 @@ export function App() {
       <div className="overlay">
         <h1>avatarsquare</h1>
         <div className="hint">右クリック: 移動 / ホイール: ズーム</div>
+        <div className="hint">画面端にカーソル: 視点スクロール / Space: キャラに戻る</div>
         <div className="hint">.vrm(アバター) .vrma/.fbx(モーション)をドロップで読み込み</div>
         <div className="hint">walk/idle以外のモーション名はその場で1回再生されます</div>
         {avatarName && <div>アバター: {avatarName}</div>}
