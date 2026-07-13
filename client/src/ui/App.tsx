@@ -14,6 +14,7 @@ export function App() {
   const status = useAppStore((s) => s.status)
   const netStatus = useAppStore((s) => s.netStatus)
   const peers = useAppStore((s) => s.peers)
+  const cameraFollow = useAppStore((s) => s.cameraFollow)
 
   useEffect(() => {
     const container = containerRef.current
@@ -58,7 +59,9 @@ export function App() {
       <div className="overlay">
         <h1>avatarsquare</h1>
         <div className="hint">右クリック: 移動 / ホイール: ズーム</div>
-        <div className="hint">画面端にカーソル: 視点スクロール / Space: キャラに戻る</div>
+        <div className="hint">
+          Y: カメラ追従/固定の切替 / 固定中は画面端で視点スクロール / Space: キャラ位置へ
+        </div>
         <div className="hint">.vrm(アバター) .vrma/.fbx(モーション)をドロップで読み込み</div>
         <div className="hint">walk/idle以外のモーション名はその場で1回再生されます</div>
         {avatarName && <div>アバター: {avatarName}</div>}
@@ -86,6 +89,9 @@ export function App() {
         {status && <div className="status">{status}</div>}
         <button type="button" onClick={() => fileInputRef.current?.click()}>
           VRMを開く
+        </button>{' '}
+        <button type="button" onClick={() => gameRef.current?.toggleFollow()}>
+          カメラ追従: {cameraFollow ? 'ON' : 'OFF'} (Y)
         </button>
         <input
           ref={fileInputRef}

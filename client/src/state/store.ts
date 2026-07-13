@@ -5,10 +5,12 @@ interface AppState {
   status: string
   netStatus: string
   peers: number
+  cameraFollow: boolean
   setAvatarName: (name: string | null) => void
   setStatus: (status: string) => void
   setNetStatus: (netStatus: string) => void
   setPeers: (peers: number) => void
+  setCameraFollow: (cameraFollow: boolean) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -16,8 +18,10 @@ export const useAppStore = create<AppState>((set) => ({
   status: '',
   netStatus: 'オフライン',
   peers: 0,
+  cameraFollow: true,
   setAvatarName: (avatarName) => set({ avatarName }),
   setStatus: (status) => set({ status }),
   setNetStatus: (netStatus) => set({ netStatus }),
   setPeers: (peers) => set({ peers }),
+  setCameraFollow: (cameraFollow) => set({ cameraFollow }),
 }))

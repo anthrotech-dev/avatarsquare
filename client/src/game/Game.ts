@@ -207,14 +207,25 @@ export class Game {
   }
 
   private onKeyDown = (event: KeyboardEvent): void => {
-    if (event.code !== 'Space') return
-    event.preventDefault()
-    this.followAvatar = true
+    if (event.code === 'Space') {
+      event.preventDefault()
+      // アニメーションなしで即座にキャラ位置へ戻す(モードは変えない)
+      this.focus.copy(this.avatar.position)
+    } else if (event.code === 'KeyY') {
+      this.toggleFollow()
+    }
   }
 
-  /** カーソルが画面端にあるとき、その方向へ視界をスクロールする */
+  /** カメラ追従(ON) / カメラ固定(OFF)を切り替える。ONにした瞬間はスナップする */
+  toggleFollow(): void {
+    this.followAvatar = !this.followAvatar
+    if (this.followAvatar) this.focus.copy(this.avatar.position)
+    useAppStore.getState().setCameraFollow(this.followAvatar)
+  }
+
+  /** カメラ固定モード中、カーソルが画面端にあるとその方向へ視界をスクロールする */
   private updateEdgePan(delta: number): void {
-    if (!this.pointer) return
+    if (this.followAvatar || !this.pointer) return
     const { clientWidth, clientHeight } = this.container
     let dx = 0
     let dz = 0
@@ -224,7 +235,6 @@ export class Game {
     else if (this.pointer.y > clientHeight - EDGE_MARGIN) dz += 1
     if (dx === 0 && dz === 0) return
 
-    this.followAvatar = false
     const speed = (this.zoom * EDGE_PAN_SPEED * delta) / Math.hypot(dx, dz)
     // カメラは-Z方向を見下ろす固定アングルなので、画面上=ワールド-Z、画面右=+X
     this.focus.x = THREE.MathUtils.clamp(this.focus.x + dx * speed, -PAN_LIMIT, PAN_LIMIT)
