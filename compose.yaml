@@ -1,0 +1,22 @@
+# 開発用スタック: LiveKit (SFU) + トークン発行API
+# --devモードのLiveKitはAPIキー devkey / シークレット secret で起動する
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --dev --bind 0.0.0.0
+    ports:
+      - "7880:7880" # WebSocket/HTTP
+      - "7881:7881" # TCP fallback
+      - "7882:7882/udp" # UDP media
+
+  server:
+    build: ./server
+    environment:
+      # ブラウザに返すLiveKitのURL(クライアントから見える必要がある)
+      LIVEKIT_URL: ${LIVEKIT_URL:-ws://localhost:7880}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
+    ports:
+      - "8787:8787"
+    depends_on:
+      - livekit

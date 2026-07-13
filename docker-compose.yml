@@ -1,9 +1,0 @@
-# 開発用LiveKitサーバー。--devモードはAPIキー devkey / シークレット secret で起動する
-services:
-  livekit:
-    image: livekit/livekit-server:latest
-    command: --dev --bind 0.0.0.0
-    ports:
-      - "7880:7880" # WebSocket/HTTP
-      - "7881:7881" # TCP fallback
-      - "7882:7882/udp" # UDP media

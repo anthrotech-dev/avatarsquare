@@ -36,10 +36,11 @@ HUD（Head-Up Display）を実装します。リファレンスとしては、FF
 ### 開発環境の起動
 
 ```sh
-docker compose up -d      # LiveKit (SFU) devサーバー
-go run ./server &         # トークン発行API (server/ にて)
+docker compose up -d      # LiveKit (SFU) + トークン発行API
 cd client && pnpm dev     # クライアント (Vite)
 ```
+
+トークンAPIだけ手元で動かしたい場合は `go run ./server` でも起動できます(ポート8787)。
 
 ブラウザで開くと自動でルーム`square`に入室します(`?room=xxx`で変更可)。
 
