@@ -1,4 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
+
+// VRoid公式の7種VRMA(public/animations/VRMA_0N.vrma)
+const EMOTES = [
+  { id: 'VRMA_01', label: '全身' },
+  { id: 'VRMA_02', label: '挨拶' },
+  { id: 'VRMA_03', label: 'ピース' },
+  { id: 'VRMA_04', label: '撃つ' },
+  { id: 'VRMA_05', label: '回る' },
+  { id: 'VRMA_06', label: 'ポーズ' },
+  { id: 'VRMA_07', label: '屈伸' },
+]
+
 import { animationKindFromFilename } from '../avatar/animationLoaders'
 import { Game } from '../game/Game'
 import { getTokenEndpoint, saveTokenEndpoint } from '../net/config'
@@ -62,6 +74,7 @@ export function App() {
         <div className="hint">
           Y: カメラ追従/固定の切替 / 固定中は画面端で視点スクロール / Space: キャラ位置へ
         </div>
+        <div className="hint">1〜7: エモート</div>
         <div className="hint">.vrm(アバター) .vrma/.fbx(モーション)をドロップで読み込み</div>
         <div className="hint">walk/idle以外のモーション名はその場で1回再生されます</div>
         {avatarName && <div>アバター: {avatarName}</div>}
@@ -93,6 +106,17 @@ export function App() {
         <button type="button" onClick={() => gameRef.current?.toggleFollow()}>
           カメラ追従: {cameraFollow ? 'ON' : 'OFF'} (Y)
         </button>
+        <div className="emotes">
+          {EMOTES.map((emote, i) => (
+            <button
+              key={emote.id}
+              type="button"
+              onClick={() => void gameRef.current?.playEmote(emote.id)}
+            >
+              {i + 1}. {emote.label}
+            </button>
+          ))}
+        </div>
         <input
           ref={fileInputRef}
           type="file"

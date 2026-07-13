@@ -140,6 +140,20 @@ export class Game {
     }
   }
 
+  /** public/animations/ のVRMAをエモートとして再生する(初回のみ取得) */
+  async playEmote(id: string): Promise<void> {
+    const { setStatus } = useAppStore.getState()
+    if (!this.avatar.hasVRM) {
+      setStatus('先にVRMを読み込んでください')
+      return
+    }
+    try {
+      await this.avatar.playEmote(id, `/animations/${id}.vrma`)
+    } catch (err) {
+      setStatus(`エモート失敗: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   /** .vrma / .fbx をドロップした場合。ファイル名(拡張子除く)がクリップ名になる */
   async loadAnimationFile(file: File, kind: AnimationFileKind): Promise<void> {
     const { setStatus } = useAppStore.getState()
@@ -214,6 +228,10 @@ export class Game {
       this.focus.copy(this.avatar.position)
     } else if (event.code === 'KeyY') {
       this.toggleFollow()
+    } else {
+      // 1〜7キーでエモート
+      const digit = /^Digit([1-7])$/.exec(event.code)?.[1]
+      if (digit) void this.playEmote(`VRMA_0${digit}`)
     }
   }
 

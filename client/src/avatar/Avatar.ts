@@ -108,6 +108,19 @@ export class Avatar {
     if (name !== 'walk' && name !== 'idle') this.animation.playOnce(name)
   }
 
+  /** URLのVRMAをエモートとして再生する。初回のみ取得し、以後はキャッシュされたクリップを使う */
+  async playEmote(name: string, url: string): Promise<void> {
+    if (!this.vrm || !this.animation) throw new Error('先にVRMを読み込んでください')
+    if (!this.animation.has(name)) {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`${url} の取得に失敗しました (${res.status})`)
+      const data = await res.arrayBuffer()
+      if (!looksLikeAnimationFile(data, 'vrma')) throw new Error('VRMAファイルではありません')
+      this.animation.register(name, await loadAnimationClip(data, 'vrma', this.vrm))
+    }
+    this.animation.playOnce(name)
+  }
+
   update(delta: number): void {
     this.updateMovement(delta)
     if (this.animation) {

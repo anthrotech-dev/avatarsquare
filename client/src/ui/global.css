@@ -90,6 +90,20 @@ body,
   flex-shrink: 0;
 }
 
+.overlay .emotes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  max-width: 340px;
+}
+
+.overlay .emotes button {
+  margin-top: 0;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
 .drop-cover {
   position: absolute;
   inset: 0;
