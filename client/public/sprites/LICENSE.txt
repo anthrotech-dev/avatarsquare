@@ -1,0 +1,11 @@
+tree-*.png:
+  "Tree Collection v2.6" by Bleed (CC-BY 3.0)
+  https://opengameart.org/content/tree-collection-v26-bleeds-game-art
+  http://remusprites.carbonmade.com/
+  (影を除去し縮小して使用)
+
+rock-*.png:
+  "Assorted Isometric Rocks" by Hansjörg Malthaner (CC-BY 3.0)
+  http://opengameart.org/users/varkalandar
+  https://opengameart.org/content/assorted-isometric-rocks
+  (シートから切り出して使用)

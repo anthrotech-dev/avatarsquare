@@ -8,6 +8,7 @@ import {
   MAP_SIZE,
   PLAZA,
   ROCKS,
+  type RockKind,
   TREES,
   type TreeKind,
 } from './MapDef'
@@ -325,17 +326,37 @@ function makeBlobShadow(radius: number): THREE.Mesh {
   return mesh
 }
 
+/**
+ * /sprites/ の画像素材を読み込むマテリアル。
+ * 読み込み失敗時は手続き描画のテクスチャにフォールバックする。
+ */
+function spriteMaterial(url: string, fallback: () => THREE.CanvasTexture): THREE.SpriteMaterial {
+  const material = new THREE.SpriteMaterial({ alphaTest: 0.5, transparent: true })
+  new THREE.TextureLoader().load(
+    url,
+    (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace
+      material.map = tex
+      material.needsUpdate = true
+    },
+    undefined,
+    () => {
+      material.map = fallback()
+      material.needsUpdate = true
+    },
+  )
+  return material
+}
+
 function makeBillboard(
-  texture: THREE.Texture,
+  material: THREE.SpriteMaterial,
   width: number,
   height: number,
   x: number,
   z: number,
 ): THREE.Group {
   const group = new THREE.Group()
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: texture, alphaTest: 0.5, transparent: true }),
-  )
+  const sprite = new THREE.Sprite(material)
   sprite.center.set(0.5, 0.02)
   sprite.scale.set(width, height, 1)
   group.add(sprite)
@@ -413,27 +434,40 @@ export function buildMap(): MapBuild {
 
   group.add(buildFountain())
 
-  const textures: Record<TreeKind, THREE.CanvasTexture> = {
-    round: roundTreeTexture(),
-    pine: pineTreeTexture(),
+  // 各素材の寸法(幅, 高さ)は画像のアスペクト比に合わせてある
+  const treeDefs: Record<
+    TreeKind,
+    { url: string; w: number; h: number; fallback: () => THREE.CanvasTexture }
+  > = {
+    oak: { url: '/sprites/tree-oak.png', w: 3.2, h: 3.4, fallback: roundTreeTexture },
+    broad: { url: '/sprites/tree-broad.png', w: 4.1, h: 3.2, fallback: roundTreeTexture },
+    autumn: { url: '/sprites/tree-autumn.png', w: 2.35, h: 3.4, fallback: roundTreeTexture },
+    pine: { url: '/sprites/tree-pine.png', w: 1.9, h: 3.8, fallback: pineTreeTexture },
+    palm: { url: '/sprites/tree-palm.png', w: 2.2, h: 3.7, fallback: pineTreeTexture },
   }
+  const treeMaterials = Object.fromEntries(
+    Object.entries(treeDefs).map(([kind, def]) => [kind, spriteMaterial(def.url, def.fallback)]),
+  ) as Record<TreeKind, THREE.SpriteMaterial>
   for (const t of TREES) {
-    const size: Record<TreeKind, [number, number]> = {
-      round: [2.8 * t.scale, 3.8 * t.scale],
-      pine: [2.2 * t.scale, 3.6 * t.scale],
-    }
-    const [w, h] = size[t.kind]
-    group.add(makeBillboard(textures[t.kind], w, h, t.x, t.z))
+    const def = treeDefs[t.kind]
+    group.add(makeBillboard(treeMaterials[t.kind], def.w * t.scale, def.h * t.scale, t.x, t.z))
   }
 
-  const rockTex = rockTexture()
+  const rockDefs: Record<RockKind, { url: string; w: number; h: number }> = {
+    brown: { url: '/sprites/rock-brown.png', w: 1.6, h: 0.83 },
+    gray: { url: '/sprites/rock-gray.png', w: 1.35, h: 0.85 },
+  }
+  const rockMaterials = Object.fromEntries(
+    Object.entries(rockDefs).map(([kind, def]) => [kind, spriteMaterial(def.url, rockTexture)]),
+  ) as Record<RockKind, THREE.SpriteMaterial>
   for (const r of ROCKS) {
-    group.add(makeBillboard(rockTex, 1.6 * r.scale, 1.1 * r.scale, r.x, r.z))
+    const def = rockDefs[r.kind]
+    group.add(makeBillboard(rockMaterials[r.kind], def.w * r.scale, def.h * r.scale, r.x, r.z))
   }
 
-  const bushTex = bushTexture()
+  const bushMaterial = spriteMaterial('/sprites/tree-bush.png', bushTexture)
   for (const b of BUSHES) {
-    group.add(makeBillboard(bushTex, 1.9 * b.scale, 1.5 * b.scale, b.x, b.z))
+    group.add(makeBillboard(bushMaterial, 1.15 * b.scale, 1.9 * b.scale, b.x, b.z))
   }
 
   return { group, ground }

@@ -39,7 +39,8 @@ export interface PropDef {
   scale: number
 }
 
-export type TreeKind = 'round' | 'pine'
+export type TreeKind = 'oak' | 'broad' | 'pine' | 'palm' | 'autumn'
+export type RockKind = 'brown' | 'gray'
 
 export const TREES: Array<PropDef & { kind: TreeKind }> = [
   // 北の森(針葉樹)
@@ -57,24 +58,29 @@ export const TREES: Array<PropDef & { kind: TreeKind }> = [
   { x: 0, z: -26, scale: 1.2, kind: 'pine' },
   { x: -25, z: -22, scale: 1.0, kind: 'pine' },
   { x: 5, z: -26, scale: 1.4, kind: 'pine' },
-  { x: -17, z: -14, scale: 0.9, kind: 'round' },
-  { x: 2, z: -14, scale: 0.9, kind: 'round' },
+  // 森の入り口の広葉樹と紅葉
+  { x: -17, z: -14, scale: 0.9, kind: 'oak' },
+  { x: 2, z: -14, scale: 0.9, kind: 'autumn' },
   // 草原に点在する広葉樹
-  { x: -24, z: 6, scale: 1.2, kind: 'round' },
-  { x: -18, z: 14, scale: 1.0, kind: 'round' },
-  { x: -25, z: 22, scale: 1.3, kind: 'round' },
-  { x: -12, z: 24, scale: 1.1, kind: 'round' },
-  { x: -3, z: 20, scale: 1.0, kind: 'round' },
-  { x: 8, z: 22, scale: 1.2, kind: 'round' },
-  { x: 14, z: 12, scale: 0.9, kind: 'round' },
-  { x: 9, z: -9, scale: 1.0, kind: 'round' },
+  { x: -24, z: 6, scale: 1.2, kind: 'oak' },
+  { x: -18, z: 14, scale: 1.0, kind: 'broad' },
+  { x: -25, z: 22, scale: 1.3, kind: 'oak' },
+  { x: -12, z: 24, scale: 1.1, kind: 'autumn' },
+  { x: -3, z: 20, scale: 1.0, kind: 'broad' },
+  { x: 8, z: 22, scale: 1.2, kind: 'oak' },
+  { x: 14, z: 12, scale: 0.9, kind: 'broad' },
+  { x: 9, z: -9, scale: 1.0, kind: 'oak' },
+  // 砂浜のヤシ
+  { x: 16, z: 7, scale: 1.2, kind: 'palm' },
+  { x: 13, z: -16, scale: 1.0, kind: 'palm' },
+  { x: 17, z: 12, scale: 1.1, kind: 'palm' },
 ]
 
-export const ROCKS: PropDef[] = [
-  { x: 12, z: -14, scale: 0.9 }, // 砂浜の岩
-  { x: -20, z: -8, scale: 1.2 },
-  { x: 12, z: 16, scale: 0.8 },
-  { x: -15, z: 3, scale: 1.0 },
+export const ROCKS: Array<PropDef & { kind: RockKind }> = [
+  { x: 12, z: -14, scale: 0.9, kind: 'gray' }, // 砂浜の岩
+  { x: -20, z: -8, scale: 1.2, kind: 'brown' },
+  { x: 12, z: 16, scale: 0.8, kind: 'brown' },
+  { x: -15, z: 3, scale: 1.0, kind: 'gray' },
 ]
 
 /** 広場の縁を飾るブッシュ(東と南西の出入り口は空けてある) */
