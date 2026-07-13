@@ -3,8 +3,8 @@ import type { MacroStore } from './macros'
 import { macroAsCommand } from './macros'
 import type { CommandContext, CommandDef } from './types'
 
-/** 射撃で対象を省略した場合の前方距離 */
-const FORWARD_TARGET_DISTANCE = 6
+/** 射撃の射程。方向指定スキルなので飛距離は狙い先によらず一定 */
+const SHOOT_RANGE = 6
 
 function parseNumber(value: string | undefined): number | null {
   if (value === undefined) return null
@@ -19,19 +19,32 @@ function forwardTarget(ctx: CommandContext, distance: number): { x: number; z: n
 }
 
 /**
- * 引数で対象地点を受け取る。省略時はカーソル直下の地面座標
- * (ホットバー・キーボード発動で自動的に狙い先が入る)。カーソルが取れなければ前方distance
+ * 方向指定スキルの着弾点を求める。引数の座標は「狙う方向」の指定で、
+ * 省略時はカーソル直下の地面座標を狙う(ホットバー・キーボード発動で自動的に入る)。
+ * 飛距離は狙い先によらずrangeで一定。方向が定まらない場合は向いている方へ
  */
-function resolveTarget(
+function resolveDirectionTarget(
   ctx: CommandContext,
   args: string[],
-  distance: number,
+  range: number,
 ): { x: number; z: number } | null {
-  if (args.length === 0) return ctx.api.getCursorTarget() ?? forwardTarget(ctx, distance)
-  const x = parseNumber(args[0])
-  const z = parseNumber(args[1])
-  if (x === null || z === null) return null
-  return { x, z }
+  let aim: { x: number; z: number } | null
+  if (args.length === 0) {
+    aim = ctx.api.getCursorTarget()
+  } else {
+    const x = parseNumber(args[0])
+    const z = parseNumber(args[1])
+    if (x === null || z === null) return null
+    aim = { x, z }
+  }
+  if (!aim) return forwardTarget(ctx, range)
+  const { x, z } = ctx.api.getPosition()
+  const dx = aim.x - x
+  const dz = aim.z - z
+  const length = Math.hypot(dx, dz)
+  // 狙い先が自分と同一地点で方向が定まらないときも前方へ
+  if (length < 1e-6) return forwardTarget(ctx, range)
+  return { x: x + (dx / length) * range, z: z + (dz / length) * range }
 }
 
 export function registerBuiltins(registry: CommandRegistry, macros: MacroStore): void {
@@ -74,10 +87,10 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
     },
     {
       name: 'shoot',
-      description: '弾を撃つ。座標省略時はカーソルの方向へ',
+      description: '弾を撃つ(方向指定・射程一定)。座標省略時はカーソルの方向へ',
       usage: '/shoot [x z]',
       execute(ctx, args) {
-        const target = resolveTarget(ctx, args, FORWARD_TARGET_DISTANCE)
+        const target = resolveDirectionTarget(ctx, args, SHOOT_RANGE)
         if (!target) {
           ctx.out.error('使い方: /shoot [x z]')
           return
