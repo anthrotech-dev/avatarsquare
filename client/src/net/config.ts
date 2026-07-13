@@ -3,25 +3,22 @@
  * 優先順: ?endpoint=クエリ > localStorage(UIから編集) > VITE_TOKEN_URL > デフォルト
  */
 
-// WebRTCのメディア(UDP/TCP)が通る必要があるためHTTPトンネルでは開発できない。
-// 開発サーバー上のtoken-serverがTLS終端(トークンAPI + wssプロキシ)を担う。
-// (.dev TLDはHSTSプリロード対象のため、平文http/wsはブラウザで使えない)
-export const DEFAULT_ENDPOINT = 'https://tunnel.anthrotech.dev:8787/token'
+// トークンサーバーはローカルで動かしHTTPトンネルで公開、LiveKitは開発サーバー
+// (wss://livekit.anthrotech.dev、nginxでSSL終端)を使う構成が既定。
+// LiveKitのURLはトークンレスポンスのurlフィールドでサーバー側から返る。
+export const DEFAULT_ENDPOINT = 'https://avatar-square.tunnel.anthrotech.dev/token'
 
-const DEFAULT_PORT = '8787'
 const STORAGE_KEY = 'avatarsquare:endpoint'
 
 /**
- * ホスト名だけの入力を https://host:8787/token に補完する。不正なら null。
- * スキームを明示した場合はポートも入力どおりに扱う(ローカル開発は http://localhost:8787/token)。
+ * ホスト名だけの入力を https://host/token に補完する。不正なら null。
+ * ローカル開発は http://localhost:8787/token のようにフルで指定する。
  */
 export function normalizeEndpoint(input: string): string | null {
   const raw = input.trim()
   if (!raw) return null
-  const hasScheme = raw.includes('://')
   try {
-    const url = new URL(hasScheme ? raw : `https://${raw}`)
-    if (!hasScheme && url.port === '') url.port = DEFAULT_PORT
+    const url = new URL(raw.includes('://') ? raw : `https://${raw}`)
     if (url.pathname === '/' || url.pathname === '') url.pathname = '/token'
     return url.toString()
   } catch {

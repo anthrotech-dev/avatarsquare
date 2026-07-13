@@ -11,3 +11,5 @@ dist/
 client/public/animations/*
 !client/public/animations/README.txt
 server/server
+server/.env
+server/tmp/

@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/livekit/protocol/auth"
@@ -27,10 +28,35 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
+// loadDotEnv はカレントディレクトリの .env (KEY=VALUE形式) を読み、
+// 未設定の環境変数にだけ反映する。シークレットをgit管理外に置くための仕組み。
+func loadDotEnv() {
+	data, err := os.ReadFile(".env")
+	if err != nil {
+		return
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		if os.Getenv(key) == "" {
+			os.Setenv(key, strings.TrimSpace(value))
+		}
+	}
+}
+
 func main() {
+	loadDotEnv()
 	apiKey := getenv("LIVEKIT_API_KEY", "devkey")
 	apiSecret := getenv("LIVEKIT_API_SECRET", "secret")
-	livekitURL := getenv("LIVEKIT_URL", "ws://localhost:7880")
+	// 開発サーバーのLiveKit(nginxでSSL終端、メディアはUDP 7882/TCP 7881直通)
+	livekitURL := getenv("LIVEKIT_URL", "wss://livekit.anthrotech.dev")
 	addr := getenv("ADDR", ":8787")
 	// 証明書と鍵を指定するとHTTPSで待ち受ける(.dev TLDはHSTSプリロードのため必須)
 	tlsCert := os.Getenv("TLS_CERT")

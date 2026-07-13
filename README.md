@@ -35,27 +35,27 @@ HUD（Head-Up Display）を実装します。リファレンスとしては、FF
 
 ### 開発環境の起動
 
+LiveKitは開発サーバーでsystemdサービスとして稼働しており、`wss://livekit.anthrotech.dev`
+(nginxでSSL終端、メディアはUDP 7882 / TCP 7881直通)で利用できる。
+手元ではトークンサーバーとクライアントだけを動かす:
+
 ```sh
-docker compose up -d      # LiveKit (SFU)
-go run ./server &         # トークン発行API (server/ にて、ポート8787)
+go run ./server           # トークン発行API (server/ にて、ポート8787。airでも可)
 cd client && pnpm dev     # クライアント (Vite)
 ```
 
-WebRTCのメディア(UDP 7882 / TCP 7881)が通る必要があるため、HTTPのみのトンネルでは動きません。
-開発サーバーへ配置する場合はLinuxバイナリを転送します:
-
-```sh
-cd server && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o token-server .
-# 転送先で: LIVEKIT_URL=ws://tunnel.anthrotech.dev:7880 ./token-server
-# LiveKit側は compose.yaml を転送し、commandに --node-ip <公開IP> を追加して起動
-```
+- トークンサーバーが返すLiveKitのURLは既定で`wss://livekit.anthrotech.dev`。
+  署名キーは`server/.env`(git管理外、`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`)で開発サーバーと揃える
+- トークンサーバー自体はHTTPだけなので、HTTPトンネルで`https://avatar-square.tunnel.anthrotech.dev`として公開できる
+- LiveKitもローカルで完結させたい場合は`docker compose up -d`し、`LIVEKIT_URL=ws://localhost:7880 go run ./server`
+  (この場合`.env`のキーはコメントアウトしてdevkey/secretに戻す)
 
 ブラウザで開くと自動でルーム`square`に入室します(`?room=xxx`で変更可)。
 
-トークンサーバーのエンドポイントは既定で`http://162.43.91.112:8787/token`(開発サーバー)に接続します。
-※`.dev`TLDはHSTSプリロード対象のため、`tunnel.anthrotech.dev`を平文http/wsで使うことはできません(TLS導入までIP直指定)。
+トークンサーバーのエンドポイントは既定で`https://avatar-square.tunnel.anthrotech.dev/token`です。
 画面上の入力欄(localStorageに保存)、`?endpoint=`クエリ、環境変数`VITE_TOKEN_URL`のいずれでも変更できます
-(優先順: クエリ > 入力欄 > 環境変数 > 既定値)。ローカル開発時は`localhost`(→`http://localhost:8787/token`に補完)を指定してください。
+(優先順: クエリ > 入力欄 > 環境変数 > 既定値)。ローカル開発時は`http://localhost:8787/token`を指定してください。
+※`.dev`TLDはHSTSプリロード対象のため、これらのドメインを平文http/wsで使うことはできません(TLS必須)。
 `.vrm`をドラッグ&ドロップでアバター読み込み、`.vrma`/Mixamo系`.fbx`でモーション登録ができます。
 
 ## Phase 6. ゲーム機能の実装
