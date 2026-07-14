@@ -208,6 +208,15 @@ body,
   color: #8fa3bd;
 }
 
+/* クールダウンの時計ワイプ。残り部分を暗く覆い、時計回りに晴れていく */
+.hud-slot-cooldown {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px; /* .hud-slotと同じ角丸 */
+  background: conic-gradient(transparent var(--cd-angle, 0deg), rgba(10, 14, 22, 0.65) 0);
+  pointer-events: none; /* クリック・D&Dを妨げない */
+}
+
 .hud-slot-label {
   font-size: 10px;
   line-height: 1.2;

@@ -1,3 +1,4 @@
+import { tryStartCooldown } from './cooldowns'
 import { parseCommandLine } from './parse'
 import type { CommandContext, CommandDef } from './types'
 
@@ -37,6 +38,10 @@ export class CommandRegistry {
     const def = this.resolve(parsed.name) ?? this.fallback?.(parsed.name)
     if (!def) {
       ctx.out.error(`未知のコマンド: /${parsed.name}`)
+      return
+    }
+    // CD中は黙って無視する(フィードバックはホットバーのタイマー表示が担う)
+    if (def.cooldownMs && !tryStartCooldown([def.name, ...(def.aliases ?? [])], def.cooldownMs)) {
       return
     }
     try {

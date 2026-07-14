@@ -71,6 +71,8 @@ export interface CommandDef {
   description: string
   /** 例: '/move <x> <z>' */
   usage?: string
+  /** 実行後この時間(ms)は再実行を無視する。CD中の実行は黙って捨てられる */
+  cooldownMs?: number
   /** restはコマンド名より後の生の残り文字列(チャット本文など改変したくない引数用) */
   execute(ctx: CommandContext, args: string[], rest?: string): void | Promise<void>
 }

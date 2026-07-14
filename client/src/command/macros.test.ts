@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerBuiltins } from './builtins'
 import { CommandRegistry } from './CommandRegistry'
+import { resetCooldowns } from './cooldowns'
 import { MacroStore, wireMacros } from './macros'
 import { makeMemoryStorage, makeTestContext } from './testUtils'
 
@@ -53,7 +54,11 @@ describe('MacroStore', () => {
 })
 
 describe('マクロの実行', () => {
-  beforeEach(() => vi.useFakeTimers())
+  // /attackのCD状態はモジュールグローバルなので、テスト間で持ち越さない
+  beforeEach(() => {
+    vi.useFakeTimers()
+    resetCooldowns()
+  })
   afterEach(() => vi.useRealTimers())
 
   it('行を順番に実行する', async () => {

@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerBuiltins } from './builtins'
 import { CommandRegistry } from './CommandRegistry'
+import { resetCooldowns } from './cooldowns'
 import { MacroStore } from './macros'
 import { makeMemoryStorage, makeTestContext } from './testUtils'
 
@@ -10,11 +11,17 @@ function makeRegistry(): CommandRegistry {
   return registry
 }
 
+// /shootのCD状態はモジュールグローバルなので、テスト間で持ち越さない
+beforeEach(() => {
+  resetCooldowns()
+})
+
 describe('/shoot(方向指定・射程一定)', () => {
   it('カーソル位置は方向の指定で、着弾は射程6mに正規化される', async () => {
     const registry = makeRegistry()
     // 近いカーソル(1.8m右)でも遠いカーソル(60m右)でも同じ着弾点
     for (const cursorX of [1.8, 60]) {
+      resetCooldowns()
       const { ctx, api } = makeTestContext({
         getCursorTarget: vi.fn(() => ({ x: cursorX, z: 0 })),
       })

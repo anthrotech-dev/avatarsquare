@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerBuiltins } from './builtins'
 import { CommandRegistry } from './CommandRegistry'
+import { resetCooldowns } from './cooldowns'
 import { MacroStore } from './macros'
 import { makeMemoryStorage, makeTestContext } from './testUtils'
 
@@ -11,6 +12,11 @@ function makeRegistry(): CommandRegistry {
 }
 
 describe('CommandRegistry', () => {
+  // attack/shootのCD状態はモジュールグローバルなので、テスト間で持ち越さない
+  beforeEach(() => {
+    resetCooldowns()
+  })
+
   it('登録したコマンドを実行できる', async () => {
     const registry = makeRegistry()
     const { ctx, api } = makeTestContext()
@@ -114,6 +120,32 @@ describe('CommandRegistry', () => {
     await registry.execute('/say', ctx)
     expect(api.sendChat).not.toHaveBeenCalled()
     expect(errors[0]).toContain('/say')
+  })
+
+  it('クールダウン中の再実行は無視される', async () => {
+    vi.useFakeTimers({ toFake: ['performance'] })
+    try {
+      const registry = makeRegistry()
+      const { ctx, api, errors } = makeTestContext()
+      await registry.execute('/attack', ctx)
+      await registry.execute('/attack', ctx)
+      expect(api.performAction).toHaveBeenCalledTimes(1)
+      // 無視は黙って行う(エラー出力しない)
+      expect(errors).toEqual([])
+      vi.advanceTimersByTime(3000)
+      await registry.execute('/attack', ctx)
+      expect(api.performAction).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('クールダウンはaliasと共有される', async () => {
+    const registry = makeRegistry()
+    const { ctx, api } = makeTestContext()
+    await registry.execute('/attack', ctx)
+    await registry.execute('/slash', ctx)
+    expect(api.performAction).toHaveBeenCalledTimes(1)
   })
 
   it('/help はコマンド一覧を出力する', async () => {

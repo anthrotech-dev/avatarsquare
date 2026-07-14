@@ -6,6 +6,9 @@ import type { CommandContext, CommandDef } from './types'
 /** 射撃の射程。方向指定スキルなので飛距離は狙い先によらず一定 */
 const SHOOT_RANGE = 6
 
+/** 攻撃スキル(斬撃・射撃)のクールダウン */
+const SKILL_COOLDOWN_MS = 3000
+
 function parseNumber(value: string | undefined): number | null {
   if (value === undefined) return null
   const n = Number(value)
@@ -81,6 +84,7 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       name: 'attack',
       aliases: ['slash'],
       description: '目の前を斬りつける',
+      cooldownMs: SKILL_COOLDOWN_MS,
       execute(ctx) {
         ctx.api.performAction('slash')
       },
@@ -89,6 +93,7 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       name: 'shoot',
       description: '弾を撃つ(方向指定・射程一定)。座標省略時はカーソルの方向へ',
       usage: '/shoot [x z]',
+      cooldownMs: SKILL_COOLDOWN_MS,
       execute(ctx, args) {
         const target = resolveDirectionTarget(ctx, args, SHOOT_RANGE)
         if (!target) {

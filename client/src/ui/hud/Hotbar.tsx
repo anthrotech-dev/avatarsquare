@@ -1,6 +1,8 @@
 import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine'
 import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { getCooldown, subscribeCooldowns } from '../../command/cooldowns'
+import { parseCommandLine } from '../../command/parse'
 import type { HotbarSlot } from '../../state/hotbar'
 import { formatKeybind, type SlotKeybind } from '../../state/keybinds'
 import { useAppStore } from '../../state/store'
@@ -20,9 +22,35 @@ interface SlotProps {
  */
 function HotbarSlotButton({ seq, index, slot, keybind }: SlotProps) {
   const ref = useRef<HTMLButtonElement>(null)
+  const overlayRef = useRef<HTMLSpanElement>(null)
   const dispatch = useAppStore((s) => s.dispatch)
   const [over, setOver] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [onCooldown, setOnCooldown] = useState(false)
+
+  // CD開始で再レンダし、以降の進捗はrAFでCSS変数を直接更新する(再レンダ嵐の回避)
+  const commandName = slot ? (parseCommandLine(slot.command)?.name ?? null) : null
+  const cooldown = useSyncExternalStore(subscribeCooldowns, () =>
+    commandName ? getCooldown(commandName) : null,
+  )
+
+  useEffect(() => {
+    if (!cooldown) return
+    setOnCooldown(true)
+    let raf = 0
+    const tick = () => {
+      const remain = cooldown.until - performance.now()
+      if (remain <= 0) {
+        setOnCooldown(false)
+        return
+      }
+      const angle = (1 - remain / cooldown.durationMs) * 360
+      overlayRef.current?.style.setProperty('--cd-angle', `${angle}deg`)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [cooldown])
 
   useEffect(() => {
     const el = ref.current
@@ -85,6 +113,7 @@ function HotbarSlotButton({ seq, index, slot, keybind }: SlotProps) {
     >
       <span className="hud-slot-key">{formatKeybind(keybind)}</span>
       <span className="hud-slot-label">{slot?.label ?? ''}</span>
+      {onCooldown && <span className="hud-slot-cooldown" ref={overlayRef} />}
     </button>
   )
 }
