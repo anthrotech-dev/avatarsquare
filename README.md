@@ -55,13 +55,14 @@ cd client && pnpm dev     # クライアント (Vite)
 
 - トークンサーバーが返すLiveKitのURLは既定で`wss://livekit.anthrotech.dev`。
   署名キーは`server/.env`(git管理外、`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`)で開発サーバーと揃える
-- トークンサーバー自体はHTTPだけなので、HTTPトンネルで`https://avatar-square.tunnel.anthrotech.dev`として公開できる
+- トークンサーバーはk8s上に`https://avatarsquare-api.anthrotech.dev`としてデプロイ済み(後述の「デプロイ」参照)。
+  手元で動かしたものをHTTPトンネルで公開して使うこともできる
 - LiveKitもローカルで完結させたい場合は`docker compose up -d`し、`LIVEKIT_URL=ws://localhost:7880 go run ./server`
   (この場合`.env`のキーはコメントアウトしてdevkey/secretに戻す)
 
 ブラウザで開くと自動でルーム`square`に入室します(`?room=xxx`で変更可)。
 
-トークンサーバーのエンドポイントは既定で`https://avatar-square.tunnel.anthrotech.dev/token`です。
+トークンサーバーのエンドポイントは既定で`https://avatarsquare-api.anthrotech.dev/token`です。
 画面上の入力欄(localStorageに保存)、`?endpoint=`クエリ、環境変数`VITE_TOKEN_URL`のいずれでも変更できます
 (優先順: クエリ > 入力欄 > 環境変数 > 既定値)。ローカル開発時は`http://localhost:8787/token`を指定してください。
 ※`.dev`TLDはHSTSプリロード対象のため、これらのドメインを平文http/wsで使うことはできません(TLS必須)。

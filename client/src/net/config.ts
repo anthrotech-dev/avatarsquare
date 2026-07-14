@@ -3,10 +3,10 @@
  * 優先順: ?endpoint=クエリ > localStorage(UIから編集) > VITE_TOKEN_URL > デフォルト
  */
 
-// トークンサーバーはローカルで動かしHTTPトンネルで公開、LiveKitは開発サーバー
+// トークンサーバーはk8s上のデプロイ(deploy/k8s/)、LiveKitは開発サーバー
 // (wss://livekit.anthrotech.dev、nginxでSSL終端)を使う構成が既定。
 // LiveKitのURLはトークンレスポンスのurlフィールドでサーバー側から返る。
-export const DEFAULT_ENDPOINT = 'https://avatar-square.tunnel.anthrotech.dev/token'
+export const DEFAULT_ENDPOINT = 'https://avatarsquare-api.anthrotech.dev/token'
 
 const STORAGE_KEY = 'avatarsquare:endpoint'
 
