@@ -3,5 +3,5 @@
 それ以外のファイルはアプリにドラッグ&ドロップで登録できます(ファイル名がクリップ名)。
 FBXはMixamoリグ(mixamorig*)のものに対応。
 
-VRMA_01.vrma 〜 VRMA_07.vrma を置くと、画面のエモートボタン(または1〜7キー)で再生できます。
-(VRoid公式配布の7種VRMAを想定: https://vroid.com/news 参照。再配布不可のためgit管理外)
+エモート用のVRMA_01.vrma 〜 VRMA_07.vrma はここには置かず、
+R2(src/ui/hud/emotes.ts の EMOTE_BASE_URL)から実行時に取得します。

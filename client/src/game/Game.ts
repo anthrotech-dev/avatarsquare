@@ -14,6 +14,7 @@ import type { PeerVoiceState } from '../net/VoiceChat'
 import { matchKeybind } from '../state/keybinds'
 import { useAppStore } from '../state/store'
 import { saveMicDeviceId } from '../state/voice'
+import { emoteUrl } from '../ui/hud/emotes'
 import { type ActionDef, BUILTIN_ACTIONS } from './actions'
 import { EffectSystem } from './EffectSystem'
 import { registerBuiltinEffects } from './effects'
@@ -379,7 +380,7 @@ export class Game {
     }
   }
 
-  /** public/animations/ のVRMAをエモートとして再生する(初回のみ取得) */
+  /** 配信元(R2)のVRMAをエモートとして再生する(初回のみ取得) */
   async playEmote(id: string): Promise<void> {
     const { setStatus } = useAppStore.getState()
     if (!this.avatar.hasVRM) {
@@ -387,7 +388,7 @@ export class Game {
       return
     }
     try {
-      await this.avatar.playEmote(id, `/animations/${id}.vrma`)
+      await this.avatar.playEmote(id, emoteUrl(id))
     } catch (err) {
       setStatus(`エモート失敗: ${err instanceof Error ? err.message : String(err)}`)
     }
