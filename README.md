@@ -68,6 +68,26 @@ cd client && pnpm dev     # クライアント (Vite)
 `.vrm`をドラッグ&ドロップでアバター読み込み、`.vrma`/Mixamo系`.fbx`でモーション登録ができます。
 ファイル名(拡張子除く)がクリップ名になり、`walk`/`idle`/`jump`/`slash`/`shoot`は対応する組み込みモーションを差し替えます。
 
+### デプロイ
+
+トークンサーバーのDockerイメージは、`main`への`server/**`のpushを契機にGitHub Actions
+(`.github/workflows/build-server-image.yml`)がビルドし、`ghcr.io/anthrotech-dev/avatarsquare/server`
+(`latest`と`sha-<commit>`タグ)へpushする。
+
+k8sへのデプロイは`deploy/k8s/`のマニフェストを使う:
+
+```sh
+# LiveKitの署名キー(server/.envと同じ値)をSecretとして作成
+kubectl create secret generic avatarsquare-server \
+  --from-literal=LIVEKIT_API_KEY=<key> \
+  --from-literal=LIVEKIT_API_SECRET=<secret>
+kubectl apply -f deploy/k8s/deployment.yaml -f deploy/k8s/service.yaml
+```
+
+- Serviceは ClusterIP(ポート8787)まで。外部公開(TLS終端含む)はクラスタ側のIngress等で行う
+- LiveKit自体はk8s管理外(既存の`wss://livekit.anthrotech.dev`を利用)
+- リポジトリがprivateの場合、GHCRのpackageをpublicにするか`imagePullSecrets`の設定が必要
+
 ### 操作方法
 
 - 右クリック: 移動 / ホイール: ズーム / Space: ジャンプ

@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: avatarsquare-server
+  labels:
+    app: avatarsquare-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: avatarsquare-server
+  template:
+    metadata:
+      labels:
+        app: avatarsquare-server
+    spec:
+      containers:
+        - name: server
+          image: ghcr.io/anthrotech-dev/avatarsquare/server:latest
+          ports:
+            - name: http
+              containerPort: 8787
+          env:
+            - name: ADDR
+              value: ":8787"
+            - name: LIVEKIT_URL
+              value: "wss://livekit.anthrotech.dev"
+            # TLS_CERT/TLS_KEYは未設定(TLSはIngress等クラスタ側で終端する)
+          envFrom:
+            # LIVEKIT_API_KEY / LIVEKIT_API_SECRET を含む(secret.example.yaml参照)
+            - secretRef:
+                name: avatarsquare-server
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

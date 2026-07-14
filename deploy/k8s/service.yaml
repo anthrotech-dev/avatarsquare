@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: avatarsquare-server
+  labels:
+    app: avatarsquare-server
+spec:
+  type: ClusterIP
+  selector:
+    app: avatarsquare-server
+  ports:
+    - name: http
+      port: 8787
+      targetPort: http

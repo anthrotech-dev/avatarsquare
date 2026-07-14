@@ -64,6 +64,12 @@ func main() {
 	// 指定するとトークン以外のパスをLiveKitへ転送する(wssのTLS終端として動く)
 	proxyTarget := os.Getenv("LIVEKIT_PROXY_TARGET")
 
+	// k8s等のliveness/readiness probe用。プロキシ有効時も/tokenと同様に優先される
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
 	http.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		room := r.URL.Query().Get("room")
