@@ -33,6 +33,15 @@ export interface GameCommandAPI {
   openPalette(): void
   /** プレイヤー一覧ウィンドウを開く */
   openPlayers(): void
+  /** ボイスチャットウィンドウを開く */
+  openVoice(): void
+  /**
+   * VCへの参加/離脱(マイク公開+他人の声の受聴)。
+   * onで初回はマイク許可を求める。失敗はthrow(コマンド側で表示)
+   */
+  setVoiceEnabled(mode: 'on' | 'off' | 'toggle'): Promise<void>
+  /** VC参加中のマイクミュート切替。onで発話可。VC未参加はthrow */
+  setMicEnabled(mode: 'on' | 'off' | 'toggle'): Promise<void>
   /** チャット入力欄にフォーカスする */
   focusChat(): void
   /** VRMファイル選択ダイアログを開く */

@@ -273,6 +273,39 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       },
     },
     {
+      name: 'vc',
+      description: 'ボイスチャットに参加/離脱する(参加でマイク発行+他の人の声が聞こえる)',
+      usage: '/vc <on|off|toggle>',
+      async execute(ctx, args) {
+        const mode = args[0]
+        if (mode !== 'on' && mode !== 'off' && mode !== 'toggle') {
+          ctx.out.error('使い方: /vc <on|off|toggle>')
+          return
+        }
+        await ctx.api.setVoiceEnabled(mode)
+      },
+    },
+    {
+      name: 'mic',
+      description: 'VC参加中のマイクをミュート/解除する',
+      usage: '/mic <on|off|toggle>',
+      async execute(ctx, args) {
+        const mode = args[0]
+        if (mode !== 'on' && mode !== 'off' && mode !== 'toggle') {
+          ctx.out.error('使い方: /mic <on|off|toggle>')
+          return
+        }
+        await ctx.api.setMicEnabled(mode)
+      },
+    },
+    {
+      name: 'voice',
+      description: 'ボイスチャットウィンドウを開く',
+      execute(ctx) {
+        ctx.api.openVoice()
+      },
+    },
+    {
       name: 'vrm',
       description: 'VRMファイルを開く/キャッシュを削除する',
       usage: '/vrm <open|clear>',

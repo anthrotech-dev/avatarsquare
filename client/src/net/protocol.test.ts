@@ -8,6 +8,7 @@ import {
   MAX_NAME_LENGTH,
   type PosMessage,
   type ProfileMessage,
+  type SpeakMessage,
   sanitizeChatText,
   sanitizeName,
 } from './protocol'
@@ -44,6 +45,11 @@ describe('encodeMessage / decodeMessage', () => {
 
   it('chatメッセージがラウンドトリップする', () => {
     const message: ChatMessage = { t: 'chat', name: 'ととがんま', text: 'こんにちは！' }
+    expect(decodeMessage(encodeMessage(message))).toEqual(message)
+  })
+
+  it('spkメッセージ(発話中通知)がラウンドトリップする', () => {
+    const message: SpeakMessage = { t: 'spk', on: true }
     expect(decodeMessage(encodeMessage(message))).toEqual(message)
   })
 

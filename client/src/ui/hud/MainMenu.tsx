@@ -31,6 +31,7 @@ export function useEscMenu(): void {
 const MENU_ITEMS: HotbarSlot[] = [
   { command: '/palette', label: 'コマンドパレット' },
   { command: '/players', label: 'プレイヤー一覧' },
+  { command: '/voice', label: 'ボイスチャット' },
   { command: '/hud edit', label: 'HUDレイアウト編集' },
   { command: '/settings', label: '設定' },
 ]

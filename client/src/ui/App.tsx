@@ -12,6 +12,8 @@ import { MainMenu, useEscMenu } from './hud/MainMenu'
 import { PlayersWindow } from './hud/PlayersWindow'
 import { SettingsWindow } from './hud/SettingsPanel'
 import { StatusPanel } from './hud/StatusPanel'
+import { VoicePanel } from './hud/VoicePanel'
+import { VoiceWindow } from './hud/VoiceWindow'
 
 export function App() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -24,6 +26,7 @@ export function App() {
   const menuOpen = useAppStore((s) => s.menuOpen)
   const settingsOpen = useAppStore((s) => s.settingsOpen)
   const playersOpen = useAppStore((s) => s.playersOpen)
+  const voiceOpen = useAppStore((s) => s.voiceOpen)
   const hotbars = useAppStore((s) => s.hotbars)
   const setHudDetailOpen = useAppStore((s) => s.setHudDetailOpen)
   const removeHotbar = useAppStore((s) => s.removeHotbar)
@@ -82,6 +85,9 @@ export function App() {
       <HudElement id="chat" label="チャット">
         <ChatWindow />
       </HudElement>
+      <HudElement id="vc" label="ボイスチャット">
+        <VoicePanel />
+      </HudElement>
       {hotbars
         .filter((h) => h.active)
         .map((h, i) => ({ hotbar: h, stack: i }))
@@ -104,6 +110,7 @@ export function App() {
         ))}
       {settingsOpen && <SettingsWindow game={game} />}
       {playersOpen && <PlayersWindow />}
+      {voiceOpen && <VoiceWindow />}
       {menuOpen && <MainMenu />}
       {paletteOpen && <CommandPalette macroStore={game?.macroStore ?? null} />}
       {hudEditMode && <HudEditBanner />}

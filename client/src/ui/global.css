@@ -62,6 +62,11 @@ body,
   transform: translateX(-50%);
 }
 
+.hud-anchor-vc {
+  top: 12px;
+  right: 12px;
+}
+
 /* 非表示要素(HUD編集モード中のみ描画される) */
 .hud-anchor.hud-hidden {
   opacity: 0.35;
@@ -491,6 +496,196 @@ body,
   color: #a8b2c2;
   font-size: 12px;
   padding: 4px 2px;
+}
+
+/* --- ボイスチャット --- */
+
+/* 右上のVC状態パネル */
+.hud-voice-panel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(20, 24, 32, 0.72);
+  color: #e8ecf2;
+  font-size: 12px;
+}
+
+.game-container button.hud-voice-panel-label {
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  font-weight: 600;
+  color: #a8b2c2;
+}
+
+.hud-voice-panel.on .hud-voice-panel-label {
+  color: #e8ecf2;
+}
+
+.hud-voice-panel.muted .hud-voice-panel-label {
+  color: #ffd479;
+}
+
+.hud-voice-panel.speaking .hud-voice-panel-label {
+  color: #7cfc8a;
+}
+
+/* ボイスチャットウィンドウ */
+.hud-voice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hud-voice-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.hud-voice-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-voice-volume input[type="range"] {
+  flex: 1;
+  padding: 0;
+}
+
+.hud-voice-volume-label {
+  color: #a8b2c2;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.hud-voice-hint {
+  color: #a8b2c2;
+  font-size: 12px;
+}
+
+.hud-voice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-voice-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(45, 55, 72, 0.6);
+}
+
+/* 発話インジケータ。喋っている間だけ点灯する */
+.hud-voice-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4a5568;
+  flex-shrink: 0;
+}
+
+.hud-voice-dot.speaking {
+  background: #7cfc8a;
+  box-shadow: 0 0 6px #7cfc8a;
+}
+
+.hud-voice-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-voice-state {
+  font-size: 12px;
+  width: 18px;
+  flex-shrink: 0;
+}
+
+.hud-voice-slider {
+  width: 90px;
+  margin-left: auto;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.hud-voice-device {
+  flex: 1;
+  min-width: 120px;
+  padding: 4px 8px;
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  background: #1a202c;
+  color: #e8ecf2;
+  font-size: 12px;
+}
+
+/* ノイズゲート: ライブメーターの上に透明トラックのスライダーを重ねる */
+.hud-gate {
+  position: relative;
+  height: 22px;
+}
+
+.hud-gate-meter {
+  position: absolute;
+  inset: 4px 0;
+  border: 1px solid #4a5568;
+  border-radius: 4px;
+  background: #1a202c;
+  overflow: hidden;
+}
+
+/* 現在のマイク音量。widthはrAFで直接更新される */
+.hud-gate-fill {
+  height: 100%;
+  width: 0;
+  background: #5a6675;
+}
+
+/* ゲートが開いている(=送信される)音量のとき */
+.hud-gate-fill.open {
+  background: #58b368;
+}
+
+.hud-gate input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: ew-resize;
+}
+
+.hud-gate input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 6px;
+  height: 22px;
+  border-radius: 3px;
+  background: #ffd479;
+  border: 1px solid #1a202c;
+}
+
+.hud-gate input[type="range"]::-moz-range-thumb {
+  width: 6px;
+  height: 22px;
+  border-radius: 3px;
+  background: #ffd479;
+  border: 1px solid #1a202c;
+}
+
+.hud-gate input[type="range"]::-moz-range-track {
+  background: transparent;
 }
 
 /* --- 設定 --- */

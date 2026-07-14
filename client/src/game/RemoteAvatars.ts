@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { CAPTURE_CENTER_Y, CAPTURE_WORLD_H, CAPTURE_WORLD_W } from '../avatar/captureSpec'
 import type { PosMessage } from '../net/protocol'
+import type { PeerVoiceState } from '../net/VoiceChat'
 import { Nameplate } from './nameplate'
 import { BUBBLE_WORLD_H, SpeechBubble } from './speechBubble'
 
@@ -43,6 +44,9 @@ class RemoteAvatar {
   private nameplate: Nameplate | null = null
   private bubble: SpeechBubble | null = null
   private video: HTMLVideoElement | null = null
+  // ネームプレートはprofile受信まで生成されないため、VC状態は保持して生成時に適用する
+  private voiceState: PeerVoiceState = 'off'
+  private speaking = false
 
   constructor() {
     this.plane = new THREE.Mesh(new THREE.PlaneGeometry(CAPTURE_WORLD_W, CAPTURE_WORLD_H))
@@ -65,11 +69,23 @@ class RemoteAvatar {
     if (!this.nameplate) {
       if (!name) return
       this.nameplate = new Nameplate(name)
+      this.nameplate.setVoiceState(this.voiceState)
+      this.nameplate.setSpeaking(this.speaking)
       // planeの子にするとカメラ正対回転で位置がずれるためgroup直下に置き、update()でy追従
       this.group.add(this.nameplate.sprite)
       return
     }
     this.nameplate.setText(name)
+  }
+
+  setVoiceState(state: PeerVoiceState): void {
+    this.voiceState = state
+    this.nameplate?.setVoiceState(state)
+  }
+
+  setSpeaking(speaking: boolean): void {
+    this.speaking = speaking
+    this.nameplate?.setSpeaking(speaking)
   }
 
   /** チャット発言を頭上の吹き出しに表示する。nameplateと同じくgroup直下+update()でy追従 */
@@ -160,6 +176,21 @@ export class RemoteAvatars {
 
   say(id: string, text: string): void {
     this.getOrCreate(id).say(text)
+  }
+
+  /** VC状態(ネームプレートのアイコン)。posより先に届き得るため保持目的で生成する */
+  setVoiceState(id: string, state: PeerVoiceState): void {
+    this.getOrCreate(id).setVoiceState(state)
+  }
+
+  /** 発話中表示。頻繁に切り替わる一過性の状態なので、いない相手は無視する */
+  setSpeaking(id: string, speaking: boolean): void {
+    this.avatars.get(id)?.setSpeaking(speaking)
+  }
+
+  /** 空間音響の音源位置に使う、補間済みの表示位置(id, position)の列挙 */
+  *positions(): IterableIterator<[string, THREE.Vector3]> {
+    for (const [id, avatar] of this.avatars) yield [id, avatar.group.position]
   }
 
   clear(): void {

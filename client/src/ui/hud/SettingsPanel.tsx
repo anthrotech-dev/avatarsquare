@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { Room } from 'livekit-client'
+import { useEffect, useRef, useState } from 'react'
 import type { Game } from '../../game/Game'
 import { getTokenEndpoint, saveTokenEndpoint } from '../../net/config'
 import type { HotbarSlot } from '../../state/hotbar'
 import { useAppStore } from '../../state/store'
+import { loadMicDeviceId, meterPosToRms, rmsToMeterPos } from '../../state/voice'
 import { FloatingWindow } from './FloatingWindow'
 import { PaletteItem } from './PaletteItem'
 
@@ -90,6 +92,7 @@ export function SettingsWindow({ game }: Props) {
             ))}
           </div>
         </div>
+        <MicDevicePicker game={game} />
         <MacroEditor game={game} />
         <div className="hud-settings-section hud-settings-hints">
           <div>右クリック: 移動 / ホイール: ズーム / Esc: メニュー</div>
@@ -108,6 +111,108 @@ export function SettingsWindow({ game }: Props) {
         </div>
       </div>
     </FloatingWindow>
+  )
+}
+
+/**
+ * ボイスチャットのマイクデバイス選択。選択は保存され、VC参加中は即時切替、
+ * VC OFF中でも次回の/vc onに適用される。
+ * デバイス名(label)はマイク許可を与えるまで空になるブラウザが多い。
+ */
+function MicDevicePicker({ game }: { game: Game | null }) {
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [selected, setSelected] = useState(loadMicDeviceId)
+
+  useEffect(() => {
+    // requestPermissions=falseで列挙のみ(許可プロンプトは/vc onに委ねる)
+    Room.getLocalDevices('audioinput', false)
+      .then(setDevices)
+      .catch(() => setDevices([]))
+  }, [])
+
+  return (
+    <div className="hud-settings-section">
+      <div className="hud-settings-label">マイク(ボイスチャット)</div>
+      <div className="hud-settings-row">
+        <select
+          className="hud-voice-device"
+          value={selected}
+          onChange={(e) => {
+            setSelected(e.target.value)
+            void game?.setMicDevice(e.target.value)
+          }}
+        >
+          <option value="">既定のマイク</option>
+          {devices.map((device, i) => (
+            <option key={device.deviceId} value={device.deviceId}>
+              {device.label || `マイク ${i + 1}(名前はVC参加後に表示)`}
+            </option>
+          ))}
+        </select>
+      </div>
+      <NoiseGatePicker game={game} />
+    </div>
+  )
+}
+
+/**
+ * ノイズゲート(入力感度)。現在のマイク音量がスライダーの背後にメーターで流れ、
+ * スライダー(黄色いつまみ)をメーターの振れに合わせることで視覚的に閾値を決める。
+ * つまみより右までメーターが振れた音だけが送信される(Discordの入力感度と同じ)。
+ * メーターはVC参加中のみ動く(ミュート中も動くので調整できる)。
+ */
+function NoiseGatePicker({ game }: { game: Game | null }) {
+  const noiseGate = useAppStore((s) => s.noiseGate)
+  const setNoiseGate = useAppStore((s) => s.setNoiseGate)
+  const voiceEnabled = useAppStore((s) => s.voiceEnabled)
+  const fillRef = useRef<HTMLDivElement>(null)
+  // rAFループから最新の閾値を参照するため(依存に入れるとループが毎回張り直しになる)
+  const gateRef = useRef(noiseGate)
+  gateRef.current = noiseGate
+
+  // メーターはstoreを介さずrAFでDOM直接更新する(毎フレームのReact再レンダを避ける)
+  useEffect(() => {
+    const fill = fillRef.current
+    if (!fill) return
+    if (!game || !voiceEnabled) {
+      fill.style.width = '0%'
+      fill.classList.remove('open')
+      return
+    }
+    let raf = 0
+    const tick = () => {
+      const level = game.getMicLevel()
+      fill.style.width = `${rmsToMeterPos(level) * 100}%`
+      // ゲートが開く(=送信される)音量なら緑、下回るならグレー
+      fill.classList.toggle('open', level > 0 && level >= gateRef.current)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [game, voiceEnabled])
+
+  return (
+    <>
+      <div className="hud-settings-label">
+        入力感度(ノイズゲート) — つまみより右に振れた音だけ送信されます
+      </div>
+      <div className="hud-gate">
+        <div className="hud-gate-meter">
+          <div ref={fillRef} className="hud-gate-fill" />
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={rmsToMeterPos(noiseGate)}
+          onChange={(e) => setNoiseGate(meterPosToRms(Number(e.target.value)))}
+        />
+      </div>
+      {!voiceEnabled && (
+        <div className="hud-settings-hints">メーターはVC参加中(/vc on)に動きます</div>
+      )}
+    </>
   )
 }
 

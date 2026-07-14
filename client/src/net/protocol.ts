@@ -51,7 +51,19 @@ export interface ChatMessage {
   text: string
 }
 
-export type GameMessage = PosMessage | ActMessage | ProfileMessage | ChatMessage
+/**
+ * 発話中(VCのノイズゲートが開いている)状態の通知。変化時のみ送る。
+ * SFUのActiveSpeakers検出はゲート済み無音+DTXで長時間沈黙すると
+ * 復帰後に働かなくなることがあり、また往復遅延もあるため、
+ * 送信側のローカル判定(=実際に送信されているか)を正とする。
+ * 詐称は可能だが許容(厳密さより自由の方針)。
+ */
+export interface SpeakMessage {
+  t: 'spk'
+  on: boolean
+}
+
+export type GameMessage = PosMessage | ActMessage | ProfileMessage | ChatMessage | SpeakMessage
 
 export const MAX_NAME_LENGTH = 24
 export const MAX_CHAT_LENGTH = 200
@@ -81,7 +93,7 @@ export function sanitizeChatText(input: string): string {
   return sanitizeText(input, MAX_CHAT_LENGTH)
 }
 
-const MESSAGE_TYPES = new Set(['pos', 'act', 'profile', 'chat'])
+const MESSAGE_TYPES = new Set(['pos', 'act', 'profile', 'chat', 'spk'])
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()

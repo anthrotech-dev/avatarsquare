@@ -10,8 +10,10 @@ import { MacroStore, wireMacros } from '../command/macros'
 import type { GameCommandAPI } from '../command/types'
 import { NetClient } from '../net/NetClient'
 import { sanitizeChatText, sanitizeName } from '../net/protocol'
+import type { PeerVoiceState } from '../net/VoiceChat'
 import { matchKeybind } from '../state/keybinds'
 import { useAppStore } from '../state/store'
+import { saveMicDeviceId } from '../state/voice'
 import { type ActionDef, BUILTIN_ACTIONS } from './actions'
 import { EffectSystem } from './EffectSystem'
 import { registerBuiltinEffects } from './effects'
@@ -76,6 +78,10 @@ export class Game {
   private lastSentName = ''
   /** 自分のidentity。名前未設定時のチャットログ表示にフォールバックとして使う */
   private identity = ''
+  /** 現在発話中のリモート参加者(SFU判定)。差分でネームプレート表示を切り替える */
+  private speakingIds = new Set<string>()
+  /** 自分の発話中(ローカルのマイク音量による即時判定) */
+  private selfSpeaking = false
 
   constructor(container: HTMLElement) {
     this.container = container
@@ -107,10 +113,22 @@ export class Game {
     this.macroStore.onChange = () => useAppStore.getState().bumpMacros()
     useAppStore.getState().setDispatch(this.dispatch)
 
-    // 表示名(プレイヤー名 > VRM名)の変化でネームプレート更新+profile送信
+    // 表示名(プレイヤー名 > VRM名)の変化でネームプレート更新+profile送信。
+    // VC音量の変更(UIのスライダー)もここでVoiceChatへ流す
     this.unsubscribeStore = useAppStore.subscribe((state, prev) => {
       if (state.playerName !== prev.playerName || state.avatarName !== prev.avatarName) {
         this.refreshNameplate()
+      }
+      if (state.voiceMasterVolume !== prev.voiceMasterVolume) {
+        this.net.voice?.setMasterVolume(state.voiceMasterVolume)
+      }
+      if (state.noiseGate !== prev.noiseGate) {
+        this.net.voice?.setNoiseGate(state.noiseGate)
+      }
+      if (state.playerVolumes !== prev.playerVolumes) {
+        for (const [id, volume] of Object.entries(state.playerVolumes)) {
+          if (prev.playerVolumes[id] !== volume) this.net.voice?.setPlayerVolume(id, volume)
+        }
       }
     })
     this.refreshNameplate()
@@ -157,13 +175,70 @@ export class Game {
     }
   }
 
-  /** エンドポイント変更時などに接続を張り直す */
+  /** エンドポイント変更時などに接続を張り直す。VCに参加中なら再参加する */
   async reconnect(): Promise<void> {
+    const wasVoiceOn = this.net.voice?.enabled ?? false
     this.net.disconnect()
     this.remotes.clear()
+    this.speakingIds.clear()
     useAppStore.getState().setPeers(0)
     useAppStore.getState().clearPlayers()
+    useAppStore.getState().clearVoicePeers()
+    this.syncSelfVoiceUI()
     await this.connectNet()
+    // マイク許可は取得済みなのでプロンプトなしで再参加できる
+    if (wasVoiceOn && this.net.voice) {
+      try {
+        await this.net.voice.setEnabled(true)
+      } catch (err) {
+        useAppStore.getState().appendChat({
+          kind: 'error',
+          text: `VCの再参加に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+        })
+      }
+      this.syncSelfVoiceUI()
+    }
+  }
+
+  /**
+   * リモートの発話中表示。spkメッセージ(送信側のローカル判定)で更新する。
+   * SFUのActiveSpeakers検出は使わない: ゲート済み無音+DTXで長時間沈黙した
+   * トラックが復帰後に検出されなくなる問題があり、往復遅延もあるため。
+   */
+  private applyRemoteSpeaking(id: string, speaking: boolean): void {
+    if (speaking === this.speakingIds.has(id)) return
+    if (speaking) this.speakingIds.add(id)
+    else this.speakingIds.delete(id)
+    this.remotes.setSpeaking(id, speaking)
+    this.pushSpeakingToStore()
+  }
+
+  /**
+   * 自分の発話中表示。毎フレーム呼ばれるが、変化時のみ反映し、
+   * 他クライアントへも通知する(リモート側の表示はこれが正)。
+   */
+  private applySelfSpeaking(speaking: boolean): void {
+    if (speaking === this.selfSpeaking) return
+    this.selfSpeaking = speaking
+    this.avatar.setSpeaking(speaking)
+    this.net.sendReliable({ t: 'spk', on: speaking })
+    this.pushSpeakingToStore()
+  }
+
+  private pushSpeakingToStore(): void {
+    const ids = [...this.speakingIds]
+    if (this.selfSpeaking && this.identity) ids.push(this.identity)
+    useAppStore.getState().setSpeakingIds(ids.sort())
+  }
+
+  /** 自分のVC/ミュート状態をネームプレートとstoreへ反映する */
+  private syncSelfVoiceUI(): void {
+    const voice = this.net.voice
+    const enabled = voice?.enabled ?? false
+    const micMuted = voice?.micMuted ?? false
+    const state: PeerVoiceState = !enabled ? 'off' : micMuted ? 'muted' : 'on'
+    this.avatar.setVoiceState(state)
+    useAppStore.getState().setVoiceState(enabled, micMuted)
   }
 
   private async connectNet(): Promise<void> {
@@ -178,42 +253,63 @@ export class Game {
     const net = new NetClient()
     this.net = net
     try {
-      await net.connect(roomName, identity, this.streamer.captureTrack(), {
-        onRemoteVideo: (id, video) => this.remotes.setVideo(id, video),
-        onRemoteMessage: (id, message) => {
-          // 入室済みの相手からのメッセージでプレイヤー一覧に載せる(joinイベントは新規参加者のみのため)
-          upsertPlayer(id)
-          if (message.t === 'pos') this.remotes.applyMessage(id, message)
-          // エフェクトは補間中のリモート位置ではなく、送信側の実行時座標を原点にする
-          if (message.t === 'act') this.spawnActionEffect(message.name, message)
-          // 受信名は相手のクライアント改造に備えてこちらでもサニタイズする
-          if (message.t === 'profile' && typeof message.name === 'string') {
-            const name = sanitizeName(message.name)
-            this.remotes.setName(id, name)
-            upsertPlayer(id, name)
-          }
-          // 本文も送信側と同様にサニタイズする(相手のクライアント改造対策)
-          if (message.t === 'chat' && typeof message.text === 'string') {
-            const text = sanitizeChatText(message.text)
-            if (text) {
-              this.remotes.say(id, text)
-              const from = sanitizeName(String(message.name ?? '')) || id
-              useAppStore.getState().appendChat({ kind: 'chat', from, text })
+      await net.connect(
+        roomName,
+        identity,
+        this.streamer.captureTrack(),
+        {
+          onRemoteVideo: (id, video) => this.remotes.setVideo(id, video),
+          onRemoteMessage: (id, message) => {
+            // 入室済みの相手からのメッセージでプレイヤー一覧に載せる(joinイベントは新規参加者のみのため)
+            upsertPlayer(id)
+            if (message.t === 'pos') this.remotes.applyMessage(id, message)
+            // エフェクトは補間中のリモート位置ではなく、送信側の実行時座標を原点にする
+            if (message.t === 'act') this.spawnActionEffect(message.name, message)
+            // 受信名は相手のクライアント改造に備えてこちらでもサニタイズする
+            if (message.t === 'profile' && typeof message.name === 'string') {
+              const name = sanitizeName(message.name)
+              this.remotes.setName(id, name)
+              upsertPlayer(id, name)
             }
-          }
+            // 本文も送信側と同様にサニタイズする(相手のクライアント改造対策)
+            if (message.t === 'chat' && typeof message.text === 'string') {
+              const text = sanitizeChatText(message.text)
+              if (text) {
+                this.remotes.say(id, text)
+                const from = sanitizeName(String(message.name ?? '')) || id
+                useAppStore.getState().appendChat({ kind: 'chat', from, text })
+              }
+            }
+            // 発話中表示(送信側のノイズゲート判定が正)
+            if (message.t === 'spk') this.applyRemoteSpeaking(id, message.on === true)
+          },
+          // 後から入ってきた人は過去のprofile/spkを受け取れないため、本人にだけ再送する
+          onPeerJoined: (id) => {
+            upsertPlayer(id)
+            const name = this.displayName()
+            if (name) this.net.sendReliable({ t: 'profile', name }, [id])
+            if (this.selfSpeaking) this.net.sendReliable({ t: 'spk', on: true }, [id])
+          },
+          onRemoteLeft: (id) => {
+            this.remotes.remove(id)
+            removePlayer(id)
+            useAppStore.getState().setPeerVoice(id, 'off')
+            this.applyRemoteSpeaking(id, false)
+          },
+          onPeersChanged: (count) => setPeers(count),
         },
-        // 後から入ってきた人は過去のprofileを受け取れないため、本人にだけ再送する
-        onPeerJoined: (id) => {
-          upsertPlayer(id)
-          const name = this.displayName()
-          if (name) this.net.sendReliable({ t: 'profile', name }, [id])
+        {
+          onPeerVoiceChanged: (id, state) => {
+            this.remotes.setVoiceState(id, state)
+            useAppStore.getState().setPeerVoice(id, state)
+          },
+          onPlaybackBlocked: () => {
+            useAppStore
+              .getState()
+              .setStatus('音声がブロックされています。画面をクリックすると再開します')
+          },
         },
-        onRemoteLeft: (id) => {
-          this.remotes.remove(id)
-          removePlayer(id)
-        },
-        onPeersChanged: (count) => setPeers(count),
-      })
+      )
       // dispose済み・別の接続に置き換わった後に完了した場合は切断する
       if (this.disposed || this.net !== net) {
         net.disconnect()
@@ -223,6 +319,12 @@ export class Game {
       // 空でも送る(名前をクリアした場合の伝播)。再接続時もこの経路で再送される
       this.lastSentName = this.displayName()
       net.sendReliable({ t: 'profile', name: this.lastSentName })
+      // 保存済みマスター音量とセッション内の個別音量を新しい接続へ適用する
+      const { voiceMasterVolume, playerVolumes } = useAppStore.getState()
+      net.voice?.setMasterVolume(voiceMasterVolume)
+      for (const [id, volume] of Object.entries(playerVolumes)) {
+        net.voice?.setPlayerVolume(id, volume)
+      }
     } catch (err) {
       if (this.disposed || this.net !== net) return
       setNetStatus(`オフライン (${err instanceof Error ? err.message : String(err)})`)
@@ -351,6 +453,23 @@ export class Game {
     openSettings: () => useAppStore.getState().setSettingsOpen(true),
     openPalette: () => useAppStore.getState().setPaletteOpen(true),
     openPlayers: () => useAppStore.getState().setPlayersOpen(true),
+    openVoice: () => useAppStore.getState().setVoiceOpen(true),
+    setVoiceEnabled: async (mode) => {
+      const voice = this.net.voice
+      if (!voice) throw new Error('サーバーに接続していません')
+      const target = mode === 'toggle' ? !voice.enabled : mode === 'on'
+      await voice.setEnabled(target)
+      this.syncSelfVoiceUI()
+    },
+    setMicEnabled: async (mode) => {
+      const voice = this.net.voice
+      if (!voice) throw new Error('サーバーに接続していません')
+      if (!voice.enabled) throw new Error('先に /vc on でVCに参加してください')
+      // targetは「マイクON(=非ミュート)にするか」
+      const target = mode === 'toggle' ? voice.micMuted : mode === 'on'
+      await voice.setMicMuted(!target)
+      this.syncSelfVoiceUI()
+    },
     focusChat: () => useAppStore.getState().requestChatFocus(),
     openVrmPicker: () => useAppStore.getState().requestVrmPicker(),
     clearVrmCache: () => {
@@ -597,8 +716,29 @@ export class Game {
     }
   }
 
+  /** 現在のマイク入力レベル(RMS)。設定パネルのメーターがrAFで直接読む(store経由だと再レンダ嵐) */
+  getMicLevel(): number {
+    return this.net.voice?.micLevel() ?? 0
+  }
+
+  /** マイクデバイスを切り替えて保存する(設定パネルから)。VC OFF中でも次回のONに効く */
+  async setMicDevice(deviceId: string): Promise<void> {
+    saveMicDeviceId(deviceId)
+    const voice = this.net.voice
+    if (!voice) return
+    const ok = await voice.switchMicDevice(deviceId).catch(() => false)
+    if (!ok) useAppStore.getState().setStatus('マイクの切り替えに失敗しました')
+  }
+
   private tick = (): void => {
     const delta = Math.min(this.clock.getDelta(), 0.1)
+
+    // 空間音響(リスナー・音源位置)と口パクの更新。アバター描画前に反映する
+    const voice = this.net.voice
+    const mouth = voice?.update(delta, this.avatar.position, this.remotes.positions()) ?? 0
+    this.avatar.setMouthOpen(mouth)
+    // 自分の発話中表示はSFU判定を待たずローカルのマイク音量で即時反映する
+    this.applySelfSpeaking(voice?.selfSpeaking ?? false)
 
     this.avatar.update(delta)
     this.updateMarkers(delta)

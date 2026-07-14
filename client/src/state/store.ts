@@ -19,6 +19,7 @@ import {
   saveHudVisibility,
 } from './hudLayout'
 import type { SlotKeybind } from './keybinds'
+import { loadMasterVolume, loadNoiseGate, saveMasterVolume, saveNoiseGate } from './voice'
 
 const NAME_STORAGE_KEY = 'avatarsquare:name'
 
@@ -93,6 +94,22 @@ interface AppState {
   menuOpen: boolean
   /** プレイヤー一覧ウィンドウ */
   playersOpen: boolean
+  /** ボイスチャットウィンドウ */
+  voiceOpen: boolean
+  /** 自分のVC参加状態(マイク公開+受聴) */
+  voiceEnabled: boolean
+  /** 自分のマイクミュート(VC参加中のみ意味を持つ) */
+  micMuted: boolean
+  /** 発話中の参加者identity(自分含む)。LiveKitのActiveSpeakersChanged由来 */
+  speakingIds: string[]
+  /** VC ON中のリモート参加者(offはキー削除)。マイクの公開/ミュートから導出 */
+  voicePeers: Record<string, 'on' | 'muted'>
+  /** リモート個別音量(0〜1)。identityは接続ごとに変わるため永続化しない */
+  playerVolumes: Record<string, number>
+  /** VC全体のマスター音量(0〜1、localStorage永続) */
+  voiceMasterVolume: number
+  /** ノイズゲート閾値(RMS、0〜1、localStorage永続)。これ未満は口パク・発話判定・送信すべて無音扱い */
+  noiseGate: number
   setAvatarName: (name: string | null) => void
   setSelfId: (selfId: string | null) => void
   /** プレイヤーを登録/更新する。nameを省略すると既存の名前を保つ(いなければ空) */
@@ -124,6 +141,15 @@ interface AppState {
   setPaletteOpen: (paletteOpen: boolean) => void
   setMenuOpen: (menuOpen: boolean) => void
   setPlayersOpen: (playersOpen: boolean) => void
+  setVoiceOpen: (voiceOpen: boolean) => void
+  setVoiceState: (voiceEnabled: boolean, micMuted: boolean) => void
+  setSpeakingIds: (speakingIds: string[]) => void
+  setPeerVoice: (id: string, state: 'off' | 'on' | 'muted') => void
+  setPlayerVolume: (id: string, volume: number) => void
+  setVoiceMasterVolume: (volume: number) => void
+  setNoiseGate: (gate: number) => void
+  /** 再接続時にリモート由来のVC表示をリセットする */
+  clearVoicePeers: () => void
 }
 
 /** seqのホットバーだけをupdaterで差し替えた新しい配列を返す */
@@ -159,6 +185,14 @@ export const useAppStore = create<AppState>((set) => ({
   paletteOpen: false,
   menuOpen: false,
   playersOpen: false,
+  voiceOpen: false,
+  voiceEnabled: false,
+  micMuted: false,
+  speakingIds: [],
+  voicePeers: {},
+  playerVolumes: {},
+  voiceMasterVolume: loadMasterVolume(),
+  noiseGate: loadNoiseGate(),
   setAvatarName: (avatarName) => set({ avatarName }),
   setSelfId: (selfId) => set({ selfId }),
   upsertPlayer: (id, name) =>
@@ -272,4 +306,40 @@ export const useAppStore = create<AppState>((set) => ({
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setMenuOpen: (menuOpen) => set({ menuOpen }),
   setPlayersOpen: (playersOpen) => set({ playersOpen }),
+  setVoiceOpen: (voiceOpen) => set({ voiceOpen }),
+  setVoiceState: (voiceEnabled, micMuted) => set({ voiceEnabled, micMuted }),
+  setSpeakingIds: (speakingIds) =>
+    set((state) => {
+      // ActiveSpeakersChangedは頻繁に飛ぶため、変化がなければ再レンダを起こさない
+      if (
+        state.speakingIds.length === speakingIds.length &&
+        state.speakingIds.every((id, i) => id === speakingIds[i])
+      ) {
+        return {}
+      }
+      return { speakingIds }
+    }),
+  setPeerVoice: (id, peerState) =>
+    set((state) => {
+      const voicePeers = { ...state.voicePeers }
+      if (peerState === 'off') {
+        if (!(id in voicePeers)) return {}
+        delete voicePeers[id]
+      } else {
+        if (voicePeers[id] === peerState) return {}
+        voicePeers[id] = peerState
+      }
+      return { voicePeers }
+    }),
+  setPlayerVolume: (id, volume) =>
+    set((state) => ({ playerVolumes: { ...state.playerVolumes, [id]: volume } })),
+  setVoiceMasterVolume: (volume) => {
+    saveMasterVolume(volume)
+    set({ voiceMasterVolume: volume })
+  },
+  setNoiseGate: (noiseGate) => {
+    saveNoiseGate(noiseGate)
+    set({ noiseGate })
+  },
+  clearVoicePeers: () => set({ voicePeers: {}, speakingIds: [] }),
 }))

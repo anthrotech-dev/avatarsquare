@@ -50,3 +50,46 @@ describe('/shoot(方向指定・射程一定)', () => {
     expect(target.z).toBeCloseTo(6)
   })
 })
+
+describe('ボイスチャットコマンド', () => {
+  it('/vc on|off|toggle がAPIへ渡る', async () => {
+    for (const mode of ['on', 'off', 'toggle'] as const) {
+      const { ctx, api } = makeTestContext()
+      await makeRegistry().execute(`/vc ${mode}`, ctx)
+      expect(api.setVoiceEnabled).toHaveBeenCalledWith(mode)
+    }
+  })
+
+  it('/vc は引数なし・不正引数でusageを表示しAPIを呼ばない', async () => {
+    for (const line of ['/vc', '/vc maybe']) {
+      const { ctx, api, errors } = makeTestContext()
+      await makeRegistry().execute(line, ctx)
+      expect(api.setVoiceEnabled).not.toHaveBeenCalled()
+      expect(errors[0]).toContain('使い方')
+    }
+  })
+
+  it('/mic on|off|toggle がAPIへ渡る', async () => {
+    for (const mode of ['on', 'off', 'toggle'] as const) {
+      const { ctx, api } = makeTestContext()
+      await makeRegistry().execute(`/mic ${mode}`, ctx)
+      expect(api.setMicEnabled).toHaveBeenCalledWith(mode)
+    }
+  })
+
+  it('APIのthrow(マイク許可拒否など)はエラー表示になりUIを壊さない', async () => {
+    const { ctx, errors } = makeTestContext({
+      setVoiceEnabled: vi.fn(async () => {
+        throw new Error('Permission denied')
+      }),
+    })
+    await makeRegistry().execute('/vc on', ctx)
+    expect(errors[0]).toContain('Permission denied')
+  })
+
+  it('/voice がウィンドウを開く', async () => {
+    const { ctx, api } = makeTestContext()
+    await makeRegistry().execute('/voice', ctx)
+    expect(api.openVoice).toHaveBeenCalled()
+  })
+})

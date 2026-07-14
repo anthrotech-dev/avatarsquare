@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Nameplate } from '../game/nameplate'
 import { BUBBLE_WORLD_H, SpeechBubble } from '../game/speechBubble'
+import type { PeerVoiceState } from '../net/VoiceChat'
 import { AnimationController } from './AnimationController'
 import {
   type AnimationFileKind,
@@ -36,6 +37,11 @@ export class Avatar {
   private moving = false
   private walkPhase = 0
   private vy = 0
+  /** 口パクの開き具合(0〜1)。VoiceChatが毎フレーム更新する */
+  private mouthOpen = 0
+  // ネームプレートは名前が付くまで生成されないため、VC状態は別途保持して生成時に適用する
+  private voiceState: PeerVoiceState = 'off'
+  private speaking = false
 
   constructor(scene: THREE.Scene) {
     this.placeholder = buildPlaceholder()
@@ -78,10 +84,32 @@ export class Avatar {
       if (!text) return
       this.nameplate = new Nameplate(text)
       this.nameplate.sprite.position.y = 2.0
+      this.nameplate.setVoiceState(this.voiceState)
+      this.nameplate.setSpeaking(this.speaking)
       this.root.add(this.nameplate.sprite)
       return
     }
     this.nameplate.setText(text)
+  }
+
+  /** 自分のVC状態(ネームプレートのアイコン表示) */
+  setVoiceState(state: PeerVoiceState): void {
+    this.voiceState = state
+    this.nameplate?.setVoiceState(state)
+  }
+
+  /** 自分の発話中表示(ネームプレートの色) */
+  setSpeaking(speaking: boolean): void {
+    this.speaking = speaking
+    this.nameplate?.setSpeaking(speaking)
+  }
+
+  /**
+   * 口パクの開き具合を設定する。update()でVRM表情'aa'に反映され、
+   * 配信キャプチャにも乗るためリモート側の追加処理は不要。
+   */
+  setMouthOpen(weight: number): void {
+    this.mouthOpen = weight
   }
 
   /**
@@ -193,6 +221,9 @@ export class Avatar {
     }
     if (this.placeholder.visible) this.updatePlaceholderMotion(delta)
     this.bubble?.update(delta)
+    // ミキサー適用後・vrm.update前に上書きすることで、VRMAが表情トラックを
+    // 持っていても口パクが勝つ。expressionManager非搭載のVRMではno-op
+    this.vrm?.expressionManager?.setValue('aa', this.mouthOpen)
     this.vrm?.update(delta)
   }
 
