@@ -553,6 +553,17 @@ body,
   gap: 6px;
 }
 
+.hud-voice-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hud-voice-modes button.active {
+  border-color: #7cfc8a;
+  color: #7cfc8a;
+}
+
 .hud-voice-volume {
   display: flex;
   align-items: center;

@@ -63,7 +63,43 @@ export interface SpeakMessage {
   on: boolean
 }
 
-export type GameMessage = PosMessage | ActMessage | ProfileMessage | ChatMessage | SpeakMessage
+/** 発音モード。broadcast=距離減衰なしで全員へ、whisper=半径内のみ */
+export const VOICE_MODES = ['normal', 'broadcast', 'whisper'] as const
+export type VoiceMode = (typeof VOICE_MODES)[number]
+
+export const WHISPER_RADIUS_DEFAULT = 5
+export const WHISPER_RADIUS_MIN = 1
+export const WHISPER_RADIUS_MAX = 15
+
+/** ウィスパー半径のクランプ。不正値は既定値に落とす(受信側でも通す) */
+export function clampWhisperRadius(radius: unknown): number {
+  const n = typeof radius === 'number' && Number.isFinite(radius) ? radius : WHISPER_RADIUS_DEFAULT
+  return Math.min(Math.max(n, WHISPER_RADIUS_MIN), WHISPER_RADIUS_MAX)
+}
+
+export function isVoiceMode(value: unknown): value is VoiceMode {
+  return typeof value === 'string' && (VOICE_MODES as readonly string[]).includes(value)
+}
+
+/**
+ * 発音モードの通知。減衰・遮断は受信側が行うため、話者がモード変更時に
+ * 全員へ配り、新規参加者には再送する(profile/spkと同じパターン)。
+ * spk同様に詐称は許容(厳密さより自由の方針)。
+ */
+export interface VoiceModeMessage {
+  t: 'vmode'
+  mode: VoiceMode
+  /** ウィスパーの可聴半径(m)。whisper時のみ意味を持つ */
+  radius?: number
+}
+
+export type GameMessage =
+  | PosMessage
+  | ActMessage
+  | ProfileMessage
+  | ChatMessage
+  | SpeakMessage
+  | VoiceModeMessage
 
 export const MAX_NAME_LENGTH = 24
 export const MAX_CHAT_LENGTH = 200
@@ -93,7 +129,7 @@ export function sanitizeChatText(input: string): string {
   return sanitizeText(input, MAX_CHAT_LENGTH)
 }
 
-const MESSAGE_TYPES = new Set(['pos', 'act', 'profile', 'chat', 'spk'])
+const MESSAGE_TYPES = new Set(['pos', 'act', 'profile', 'chat', 'spk', 'vmode'])
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()

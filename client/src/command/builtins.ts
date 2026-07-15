@@ -1,3 +1,4 @@
+import { clampWhisperRadius, isVoiceMode } from '../net/protocol'
 import type { CommandRegistry } from './CommandRegistry'
 import type { MacroStore } from './macros'
 import { macroAsCommand } from './macros'
@@ -48,6 +49,34 @@ function resolveDirectionTarget(
   // 狙い先が自分と同一地点で方向が定まらないときも前方へ
   if (length < 1e-6) return forwardTarget(ctx, range)
   return { x: x + (dx / length) * range, z: z + (dz / length) * range }
+}
+
+const VOICE_MODE_LABELS = {
+  normal: '通常発話に戻しました',
+  broadcast: '📢 ブロードキャスト: 距離に関係なく全員に届きます',
+  whisper: '🤫 ウィスパー: 円の中の人にだけ聞こえます',
+} as const
+
+/**
+ * 発音モードの設定と結果表示。whisperは半径(m)を指定でき、範囲外はクランプする。
+ * 半径が数値でないときはnullを返す(呼び出し側でusage表示)。
+ */
+function applyVoiceMode(
+  ctx: CommandContext,
+  mode: 'normal' | 'broadcast' | 'whisper',
+  radiusArg?: string,
+): boolean {
+  let radius: number | undefined
+  if (radiusArg !== undefined) {
+    const n = parseNumber(radiusArg)
+    if (n === null) return false
+    radius = clampWhisperRadius(n)
+  }
+  ctx.api.setVoiceMode(mode, radius)
+  let label: string = VOICE_MODE_LABELS[mode]
+  if (mode === 'whisper' && radius !== undefined) label += `(半径${radius}m)`
+  ctx.out.print(label)
+  return true
 }
 
 export function registerBuiltins(registry: CommandRegistry, macros: MacroStore): void {
@@ -279,15 +308,42 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
     },
     {
       name: 'vc',
-      description: 'ボイスチャットに参加/離脱する(参加でマイク発行+他の人の声が聞こえる)',
-      usage: '/vc <on|off|toggle>',
+      description: 'ボイスチャットに参加/離脱・発音モードを切り替える',
+      usage: '/vc <on|off|toggle|mode <normal|broadcast|whisper> [半径m]>',
       async execute(ctx, args) {
+        const usage = () =>
+          ctx.out.error('使い方: /vc <on|off|toggle|mode <normal|broadcast|whisper> [半径m]>')
         const mode = args[0]
+        if (mode === 'mode') {
+          if (!isVoiceMode(args[1]) || !applyVoiceMode(ctx, args[1], args[2])) usage()
+          return
+        }
         if (mode !== 'on' && mode !== 'off' && mode !== 'toggle') {
-          ctx.out.error('使い方: /vc <on|off|toggle>')
+          usage()
           return
         }
         await ctx.api.setVoiceEnabled(mode)
+      },
+    },
+    {
+      name: 'broadcast',
+      aliases: ['bc'],
+      description: 'ブロードキャスト発話を切り替える(距離に関係なく全員に届く)',
+      execute(ctx) {
+        const next = ctx.api.getVoiceMode() === 'broadcast' ? 'normal' : 'broadcast'
+        applyVoiceMode(ctx, next)
+      },
+    },
+    {
+      name: 'whisper',
+      aliases: ['wh'],
+      description: 'ウィスパー発話を切り替える(周囲の円の中の人にだけ聞こえる)',
+      usage: '/whisper [半径m]',
+      execute(ctx, args) {
+        // 半径指定時はトグルせずウィスパーに設定(ウィスパー中の半径変更にも使う)
+        const next =
+          args[0] === undefined && ctx.api.getVoiceMode() === 'whisper' ? 'normal' : 'whisper'
+        if (!applyVoiceMode(ctx, next, args[0])) ctx.out.error('使い方: /whisper [半径m]')
       },
     },
     {

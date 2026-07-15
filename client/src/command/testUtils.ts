@@ -31,6 +31,8 @@ export function makeTestContext(overrides: Partial<GameCommandAPI> = {}): {
     openVoice: vi.fn(),
     setVoiceEnabled: vi.fn(async () => {}),
     setMicEnabled: vi.fn(async () => {}),
+    setVoiceMode: vi.fn(),
+    getVoiceMode: vi.fn(() => 'normal' as const),
     focusChat: vi.fn(),
     openVrmPicker: vi.fn(),
     clearVrmCache: vi.fn(),

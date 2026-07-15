@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { VoiceMode } from '../net/protocol'
 import type { PeerVoiceState } from '../net/VoiceChat'
 
 /**
@@ -30,6 +31,7 @@ export class Nameplate {
   private readonly material: THREE.SpriteMaterial
   private text = ''
   private voiceState: PeerVoiceState = 'off'
+  private voiceMode: VoiceMode = 'normal'
   private speaking = false
 
   constructor(text: string) {
@@ -61,6 +63,13 @@ export class Nameplate {
     this.redraw()
   }
 
+  /** 発音モード(アイコン表示)。broadcastは📢、whisperは🤫 */
+  setVoiceMode(mode: VoiceMode): void {
+    if (mode === this.voiceMode) return
+    this.voiceMode = mode
+    this.redraw()
+  }
+
   /** 発話中の枠色表示 */
   setSpeaking(speaking: boolean): void {
     if (speaking === this.speaking) return
@@ -83,8 +92,7 @@ export class Nameplate {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
 
-    const icon = this.voiceState === 'off' ? '' : this.voiceState === 'muted' ? '🔇 ' : '🎤 '
-    const label = icon + this.text
+    const label = this.voiceIcon() + this.text
     const textWidth = Math.min(ctx.measureText(label).width, CANVAS_W - PAD_X * 2)
     const boxWidth = textWidth + PAD_X * 2
     ctx.fillStyle = 'rgba(20, 24, 32, 0.6)'
@@ -100,6 +108,15 @@ export class Nameplate {
     ctx.fillStyle = this.speaking ? SPEAKING_COLOR : '#f2f5fa'
     ctx.fillText(label, CANVAS_W / 2, CANVAS_H / 2 + 2, CANVAS_W - PAD_X * 2)
     this.texture.needsUpdate = true
+  }
+
+  /** VC状態アイコン。優先順: ミュート > 発音モード > 通常マイク */
+  private voiceIcon(): string {
+    if (this.voiceState === 'off') return ''
+    if (this.voiceState === 'muted') return '🔇 '
+    if (this.voiceMode === 'broadcast') return '📢 '
+    if (this.voiceMode === 'whisper') return '🤫 '
+    return '🎤 '
   }
 
   dispose(): void {

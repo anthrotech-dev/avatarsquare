@@ -100,3 +100,68 @@ describe('ボイスチャットコマンド', () => {
     expect(api.openVoice).toHaveBeenCalled()
   })
 })
+
+describe('発音モードコマンド', () => {
+  it('/vc mode <normal|broadcast|whisper> がAPIへ渡る', async () => {
+    for (const mode of ['normal', 'broadcast', 'whisper'] as const) {
+      const { ctx, api } = makeTestContext()
+      await makeRegistry().execute(`/vc mode ${mode}`, ctx)
+      expect(api.setVoiceMode).toHaveBeenCalledWith(mode, undefined)
+    }
+  })
+
+  it('/vc mode whisper 8 は半径つきで渡る', async () => {
+    const { ctx, api } = makeTestContext()
+    await makeRegistry().execute('/vc mode whisper 8', ctx)
+    expect(api.setVoiceMode).toHaveBeenCalledWith('whisper', 8)
+  })
+
+  it('/vc mode の半径は1〜15にクランプされる', async () => {
+    const { ctx, api } = makeTestContext()
+    await makeRegistry().execute('/vc mode whisper 100', ctx)
+    expect(api.setVoiceMode).toHaveBeenCalledWith('whisper', 15)
+  })
+
+  it('/vc mode の不正モード・不正半径はusageを表示しAPIを呼ばない', async () => {
+    for (const line of ['/vc mode', '/vc mode shout', '/vc mode whisper abc']) {
+      const { ctx, api, errors } = makeTestContext()
+      await makeRegistry().execute(line, ctx)
+      expect(api.setVoiceMode).not.toHaveBeenCalled()
+      expect(errors[0]).toContain('使い方')
+    }
+  })
+
+  it('/broadcast はブロードキャストとのトグル', async () => {
+    const { ctx, api } = makeTestContext()
+    await makeRegistry().execute('/broadcast', ctx)
+    expect(api.setVoiceMode).toHaveBeenCalledWith('broadcast', undefined)
+
+    const back = makeTestContext({ getVoiceMode: vi.fn(() => 'broadcast' as const) })
+    await makeRegistry().execute('/broadcast', back.ctx)
+    expect(back.api.setVoiceMode).toHaveBeenCalledWith('normal', undefined)
+  })
+
+  it('/whisper はウィスパーとのトグル', async () => {
+    const { ctx, api } = makeTestContext()
+    await makeRegistry().execute('/whisper', ctx)
+    expect(api.setVoiceMode).toHaveBeenCalledWith('whisper', undefined)
+
+    const back = makeTestContext({ getVoiceMode: vi.fn(() => 'whisper' as const) })
+    await makeRegistry().execute('/whisper', back.ctx)
+    expect(back.api.setVoiceMode).toHaveBeenCalledWith('normal', undefined)
+  })
+
+  it('/whisper 8 はトグルせず半径つきでウィスパーに設定する', async () => {
+    // ウィスパー中でも半径指定ならnormalへ戻らない(半径変更として機能)
+    const { ctx, api } = makeTestContext({ getVoiceMode: vi.fn(() => 'whisper' as const) })
+    await makeRegistry().execute('/whisper 8', ctx)
+    expect(api.setVoiceMode).toHaveBeenCalledWith('whisper', 8)
+  })
+
+  it('/whisper の不正半径はusageを表示しAPIを呼ばない', async () => {
+    const { ctx, api, errors } = makeTestContext()
+    await makeRegistry().execute('/whisper abc', ctx)
+    expect(api.setVoiceMode).not.toHaveBeenCalled()
+    expect(errors[0]).toContain('使い方')
+  })
+})

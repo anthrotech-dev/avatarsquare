@@ -21,9 +21,18 @@ export function VoiceWindow() {
   const selfId = useAppStore((s) => s.selfId)
   const playerName = useAppStore((s) => s.playerName)
   const avatarName = useAppStore((s) => s.avatarName)
+  const voiceMode = useAppStore((s) => s.voiceMode)
+  const whisperRadius = useAppStore((s) => s.whisperRadius)
+  const voicePeerModes = useAppStore((s) => s.voicePeerModes)
 
   const selfName = playerName || avatarName || selfId || '(未接続)'
-  const selfState = !voiceEnabled ? null : micMuted ? '🔇' : '🎤'
+  const modeIcon = (mode?: 'broadcast' | 'whisper') =>
+    mode === 'broadcast' ? '📢' : mode === 'whisper' ? '🤫' : '🎤'
+  const selfState = !voiceEnabled
+    ? null
+    : micMuted
+      ? '🔇'
+      : modeIcon(voiceMode === 'normal' ? undefined : voiceMode)
   const sorted = [...players].sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, 'ja'))
 
   return (
@@ -43,6 +52,33 @@ export function VoiceWindow() {
             onClick={() => void dispatch?.('/mic toggle')}
           >
             {micMuted ? 'ミュート解除' : 'ミュート'}
+          </button>
+        </div>
+        <div className="hud-voice-modes">
+          <span className="hud-voice-volume-label">発音モード</span>
+          <button
+            type="button"
+            className={voiceMode === 'normal' ? 'active' : ''}
+            title="距離に応じて聞こえる通常の発話"
+            onClick={() => void dispatch?.('/vc mode normal')}
+          >
+            通常
+          </button>
+          <button
+            type="button"
+            className={voiceMode === 'broadcast' ? 'active' : ''}
+            title="距離に関係なく全員に届く"
+            onClick={() => void dispatch?.('/vc mode broadcast')}
+          >
+            📢 拡声
+          </button>
+          <button
+            type="button"
+            className={voiceMode === 'whisper' ? 'active' : ''}
+            title={`周囲${whisperRadius}mの円の中の人にだけ聞こえる(/whisper <半径>で変更)`}
+            onClick={() => void dispatch?.('/vc mode whisper')}
+          >
+            🤫 ささやき
           </button>
         </div>
         <div className="hud-voice-volume">
@@ -75,7 +111,11 @@ export function VoiceWindow() {
               />
               <span className="hud-voice-name">{player.name || player.id}</span>
               <span className="hud-voice-state">
-                {voicePeers[player.id] === 'muted' ? '🔇' : voicePeers[player.id] ? '🎤' : ''}
+                {voicePeers[player.id] === 'muted'
+                  ? '🔇'
+                  : voicePeers[player.id]
+                    ? modeIcon(voicePeerModes[player.id])
+                    : ''}
               </span>
               <input
                 type="range"

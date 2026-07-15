@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { sanitizeName } from '../net/protocol'
+import { sanitizeName, WHISPER_RADIUS_DEFAULT } from '../net/protocol'
 import {
   activateHotbar,
   deactivateHotbar,
@@ -104,6 +104,12 @@ interface AppState {
   speakingIds: string[]
   /** VC ON中のリモート参加者(offはキー削除)。マイクの公開/ミュートから導出 */
   voicePeers: Record<string, 'on' | 'muted'>
+  /** 自分の発音モード。誤って拡声のまま再入室しないよう永続化しない(セッション限り) */
+  voiceMode: 'normal' | 'broadcast' | 'whisper'
+  /** 自分のウィスパー可聴半径(m) */
+  whisperRadius: number
+  /** リモート話者の発音モード(normalはキー削除)。vmodeメッセージ由来 */
+  voicePeerModes: Record<string, 'broadcast' | 'whisper'>
   /** リモート個別音量(0〜1)。identityは接続ごとに変わるため永続化しない */
   playerVolumes: Record<string, number>
   /** VC全体のマスター音量(0〜1、localStorage永続) */
@@ -145,6 +151,8 @@ interface AppState {
   setVoiceState: (voiceEnabled: boolean, micMuted: boolean) => void
   setSpeakingIds: (speakingIds: string[]) => void
   setPeerVoice: (id: string, state: 'off' | 'on' | 'muted') => void
+  setVoiceMode: (mode: 'normal' | 'broadcast' | 'whisper', whisperRadius: number) => void
+  setPeerVoiceMode: (id: string, mode: 'normal' | 'broadcast' | 'whisper') => void
   setPlayerVolume: (id: string, volume: number) => void
   setVoiceMasterVolume: (volume: number) => void
   setNoiseGate: (gate: number) => void
@@ -190,6 +198,9 @@ export const useAppStore = create<AppState>((set) => ({
   micMuted: false,
   speakingIds: [],
   voicePeers: {},
+  voiceMode: 'normal',
+  whisperRadius: WHISPER_RADIUS_DEFAULT,
+  voicePeerModes: {},
   playerVolumes: {},
   voiceMasterVolume: loadMasterVolume(),
   noiseGate: loadNoiseGate(),
@@ -333,6 +344,19 @@ export const useAppStore = create<AppState>((set) => ({
     }),
   setPlayerVolume: (id, volume) =>
     set((state) => ({ playerVolumes: { ...state.playerVolumes, [id]: volume } })),
+  setVoiceMode: (voiceMode, whisperRadius) => set({ voiceMode, whisperRadius }),
+  setPeerVoiceMode: (id, mode) =>
+    set((state) => {
+      const voicePeerModes = { ...state.voicePeerModes }
+      if (mode === 'normal') {
+        if (!(id in voicePeerModes)) return {}
+        delete voicePeerModes[id]
+      } else {
+        if (voicePeerModes[id] === mode) return {}
+        voicePeerModes[id] = mode
+      }
+      return { voicePeerModes }
+    }),
   setVoiceMasterVolume: (volume) => {
     saveMasterVolume(volume)
     set({ voiceMasterVolume: volume })
@@ -341,5 +365,5 @@ export const useAppStore = create<AppState>((set) => ({
     saveNoiseGate(noiseGate)
     set({ noiseGate })
   },
-  clearVoicePeers: () => set({ voicePeers: {}, speakingIds: [] }),
+  clearVoicePeers: () => set({ voicePeers: {}, voicePeerModes: {}, speakingIds: [] }),
 }))

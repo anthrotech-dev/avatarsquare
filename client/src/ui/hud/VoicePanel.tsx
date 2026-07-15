@@ -9,10 +9,12 @@ export function VoicePanel() {
   const dispatch = useAppStore((s) => s.dispatch)
   const voiceEnabled = useAppStore((s) => s.voiceEnabled)
   const micMuted = useAppStore((s) => s.micMuted)
+  const voiceMode = useAppStore((s) => s.voiceMode)
   const selfId = useAppStore((s) => s.selfId)
   const speaking = useAppStore((s) => selfId !== null && s.speakingIds.includes(selfId))
 
-  const label = !voiceEnabled ? 'VC OFF' : micMuted ? 'VC ON(ミュート)' : 'VC ON'
+  const modeLabel = voiceMode === 'broadcast' ? '📢' : voiceMode === 'whisper' ? '🤫' : ''
+  const label = !voiceEnabled ? 'VC OFF' : `VC ON${modeLabel}${micMuted ? '(ミュート)' : ''}`
   const stateClass = !voiceEnabled ? 'off' : speaking ? 'speaking' : micMuted ? 'muted' : 'on'
 
   return (

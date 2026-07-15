@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Nameplate } from '../game/nameplate'
 import { BUBBLE_WORLD_H, SpeechBubble } from '../game/speechBubble'
+import type { VoiceMode } from '../net/protocol'
 import type { PeerVoiceState } from '../net/VoiceChat'
 import { AnimationController } from './AnimationController'
 import {
@@ -41,6 +42,7 @@ export class Avatar {
   private mouthOpen = 0
   // ネームプレートは名前が付くまで生成されないため、VC状態は別途保持して生成時に適用する
   private voiceState: PeerVoiceState = 'off'
+  private voiceMode: VoiceMode = 'normal'
   private speaking = false
 
   constructor(scene: THREE.Scene) {
@@ -85,6 +87,7 @@ export class Avatar {
       this.nameplate = new Nameplate(text)
       this.nameplate.sprite.position.y = 2.0
       this.nameplate.setVoiceState(this.voiceState)
+      this.nameplate.setVoiceMode(this.voiceMode)
       this.nameplate.setSpeaking(this.speaking)
       this.root.add(this.nameplate.sprite)
       return
@@ -96,6 +99,12 @@ export class Avatar {
   setVoiceState(state: PeerVoiceState): void {
     this.voiceState = state
     this.nameplate?.setVoiceState(state)
+  }
+
+  /** 自分の発音モード(ネームプレートのアイコン表示) */
+  setVoiceMode(mode: VoiceMode): void {
+    this.voiceMode = mode
+    this.nameplate?.setVoiceMode(mode)
   }
 
   /** 自分の発話中表示(ネームプレートの色) */

@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { CAPTURE_CENTER_Y, CAPTURE_WORLD_H, CAPTURE_WORLD_W } from '../avatar/captureSpec'
-import type { PosMessage } from '../net/protocol'
+import type { PosMessage, VoiceMode } from '../net/protocol'
 import type { PeerVoiceState } from '../net/VoiceChat'
 import { Nameplate } from './nameplate'
 import { BUBBLE_WORLD_H, SpeechBubble } from './speechBubble'
@@ -46,6 +46,7 @@ class RemoteAvatar {
   private video: HTMLVideoElement | null = null
   // ネームプレートはprofile受信まで生成されないため、VC状態は保持して生成時に適用する
   private voiceState: PeerVoiceState = 'off'
+  private voiceMode: VoiceMode = 'normal'
   private speaking = false
 
   constructor() {
@@ -70,6 +71,7 @@ class RemoteAvatar {
       if (!name) return
       this.nameplate = new Nameplate(name)
       this.nameplate.setVoiceState(this.voiceState)
+      this.nameplate.setVoiceMode(this.voiceMode)
       this.nameplate.setSpeaking(this.speaking)
       // planeの子にするとカメラ正対回転で位置がずれるためgroup直下に置き、update()でy追従
       this.group.add(this.nameplate.sprite)
@@ -81,6 +83,11 @@ class RemoteAvatar {
   setVoiceState(state: PeerVoiceState): void {
     this.voiceState = state
     this.nameplate?.setVoiceState(state)
+  }
+
+  setVoiceMode(mode: VoiceMode): void {
+    this.voiceMode = mode
+    this.nameplate?.setVoiceMode(mode)
   }
 
   setSpeaking(speaking: boolean): void {
@@ -181,6 +188,11 @@ export class RemoteAvatars {
   /** VC状態(ネームプレートのアイコン)。posより先に届き得るため保持目的で生成する */
   setVoiceState(id: string, state: PeerVoiceState): void {
     this.getOrCreate(id).setVoiceState(state)
+  }
+
+  /** 発音モード(ネームプレートのアイコン)。voiceState同様に保持目的で生成する */
+  setVoiceMode(id: string, mode: VoiceMode): void {
+    this.getOrCreate(id).setVoiceMode(mode)
   }
 
   /** 発話中表示。頻繁に切り替わる一過性の状態なので、いない相手は無視する */

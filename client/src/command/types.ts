@@ -42,6 +42,13 @@ export interface GameCommandAPI {
   setVoiceEnabled(mode: 'on' | 'off' | 'toggle'): Promise<void>
   /** VC参加中のマイクミュート切替。onで発話可。VC未参加はthrow */
   setMicEnabled(mode: 'on' | 'off' | 'toggle'): Promise<void>
+  /**
+   * 発音モード。broadcast=距離減衰なしで全員へ、whisper=周囲radius(m)のみ。
+   * VC OFF中でも設定でき、次の参加時から効く
+   */
+  setVoiceMode(mode: 'normal' | 'broadcast' | 'whisper', radius?: number): void
+  /** 現在の発音モード(/broadcast・/whisperのトグル判定用) */
+  getVoiceMode(): 'normal' | 'broadcast' | 'whisper'
   /** チャット入力欄にフォーカスする */
   focusChat(): void
   /** VRMファイル選択ダイアログを開く */

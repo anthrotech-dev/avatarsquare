@@ -14,6 +14,7 @@ import {
 } from 'livekit-client'
 import { mouthTarget, rmsFromTimeDomain, stepMouth, stepSpeakingHold } from '../avatar/lipsync'
 import { loadMicDeviceId, loadNoiseGate } from '../state/voice'
+import { type VoiceMode, WHISPER_RADIUS_DEFAULT } from './protocol'
 
 /**
  * ボイスチャット。Room 1接続につき1インスタンス(NetClientが生成・破棄)。
@@ -56,6 +57,17 @@ export function getVoiceAudioContext(): AudioContext {
 /** リモート参加者のVC状態。offはマイク非公開(=VC不参加) */
 export type PeerVoiceState = 'off' | 'on' | 'muted'
 
+/** ウィスパーのゲート係数の追従時定数(秒)。境界の出入りでプツッと切らない */
+const WHISPER_FADE_TAU = 0.1
+
+/**
+ * ウィスパーの距離ゲート係数(目標値)。半径内=1、外=0。
+ * フェードは呼び出し側が時定数追従で行う。
+ */
+export function whisperFactor(distance: number, radius: number): number {
+  return distance <= radius ? 1 : 0
+}
+
 export interface VoiceChatCallbacks {
   /** リモート参加者のVC状態変化(マイクの公開/ミュートから導出) */
   onPeerVoiceChanged(id: string, state: PeerVoiceState): void
@@ -68,12 +80,21 @@ interface VoiceEntry {
   track: RemoteAudioTrack
   panner: PannerNode
   element: HTMLMediaElement
+  /** ウィスパーの距離ゲート係数(0〜1、時定数追従のなまし済み) */
+  whisperGain: number
+}
+
+/** リモート話者の発音モード(vmodeメッセージから。未受信はnormal扱い) */
+interface PeerMode {
+  mode: VoiceMode
+  radius: number
 }
 
 export class VoiceChat {
   private readonly context = getVoiceAudioContext()
   private readonly entries = new Map<string, VoiceEntry>()
   private readonly playerVolumes = new Map<string, number>()
+  private readonly peerModes = new Map<string, PeerMode>()
   private masterVolume = 1
   private _enabled = false
   private _micMuted = false
@@ -181,6 +202,22 @@ export class VoiceChat {
   }
 
   /**
+   * リモート話者の発音モード(vmodeメッセージ)。減衰・遮断は受信側の責務。
+   * broadcast=距離減衰なし(update()でパンナーをリスナー位置に固定)、
+   * whisper=半径外は無音(update()で距離ゲート)。
+   */
+  setPeerMode(id: string, mode: VoiceMode, radius: number = WHISPER_RADIUS_DEFAULT): void {
+    if (mode === 'normal') this.peerModes.delete(id)
+    else this.peerModes.set(id, { mode, radius })
+    const entry = this.entries.get(id)
+    if (entry && mode !== 'whisper') {
+      // ウィスパー解除は即座に通常音量へ(ゲートの残留で無音のままにしない)
+      entry.whisperGain = 1
+      this.applyVolume(id, entry)
+    }
+  }
+
+  /**
    * マイクデバイスを切り替える。falseなら失敗。
    * 公開しているのはゲート済みトラックなので、生マイクの差し替えだけで済む
    * (公開トラックはそのまま=リモートには何も起きない)。
@@ -214,9 +251,27 @@ export class VoiceChat {
   ): number {
     if (this._enabled) {
       this.updateListener(listener)
+      // ウィスパーのフェード追従率(指数なまし)。境界の出入りでプツッと切らない
+      const fade = 1 - Math.exp(-delta / WHISPER_FADE_TAU)
       for (const [id, pos] of remotePositions) {
         const entry = this.entries.get(id)
-        if (entry) this.setPannerPosition(entry.panner, pos.x, pos.y + VOICE_HEIGHT, pos.z)
+        if (!entry) continue
+        const peer = this.peerModes.get(id)
+        if (peer?.mode === 'broadcast') {
+          // 距離減衰なし: パンナーをリスナー位置に固定(距離0=ゲイン1、パン中央)
+          this.setPannerPosition(entry.panner, listener.x, VOICE_HEIGHT, listener.z)
+          continue
+        }
+        this.setPannerPosition(entry.panner, pos.x, pos.y + VOICE_HEIGHT, pos.z)
+        if (peer?.mode === 'whisper') {
+          const distance = Math.hypot(pos.x - listener.x, pos.z - listener.z)
+          const target = whisperFactor(distance, peer.radius)
+          const next = entry.whisperGain + (target - entry.whisperGain) * fade
+          if (Math.abs(next - entry.whisperGain) > 1e-4) {
+            entry.whisperGain = next
+            this.applyVolume(id, entry)
+          }
+        }
       }
     }
 
@@ -321,6 +376,7 @@ export class VoiceChat {
 
   private readonly onParticipantDisconnected = (participant: RemoteParticipant): void => {
     this.removeEntry(participant.identity)
+    this.peerModes.delete(participant.identity)
   }
 
   private readonly onAudioPlaybackChanged = (): void => {
@@ -378,7 +434,9 @@ export class VoiceChat {
     // attach必須: SDKはattach済み要素のstreamからWebAudioへ接続する
     // (要素自体はミュートされるためDOMに足す必要はない)
     const element = track.attach()
-    const entry: VoiceEntry = { track, panner, element }
+    // ウィスパー中の話者は無音から入る(半径外で一瞬鳴らさない。半径内ならすぐ開く)
+    const whisperGain = this.peerModes.get(id)?.mode === 'whisper' ? 0 : 1
+    const entry: VoiceEntry = { track, panner, element, whisperGain }
     this.entries.set(id, entry)
     this.applyVolume(id, entry)
   }
@@ -393,7 +451,8 @@ export class VoiceChat {
 
   private applyVolume(id: string, entry: VoiceEntry): void {
     const personal = this.playerVolumes.get(id) ?? 1
-    entry.track.setVolume(Math.max(0, Math.min(personal * this.masterVolume, 1)))
+    const volume = personal * this.masterVolume * entry.whisperGain
+    entry.track.setVolume(Math.max(0, Math.min(volume, 1)))
   }
 
   /** 保存済みデバイスで生マイクを取得する。初回はここで許可プロンプトが出る */

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   type ActMessage,
   type ChatMessage,
+  clampWhisperRadius,
   decodeMessage,
   encodeMessage,
+  isVoiceMode,
   MAX_CHAT_LENGTH,
   MAX_NAME_LENGTH,
   type PosMessage,
@@ -11,6 +13,10 @@ import {
   type SpeakMessage,
   sanitizeChatText,
   sanitizeName,
+  type VoiceModeMessage,
+  WHISPER_RADIUS_DEFAULT,
+  WHISPER_RADIUS_MAX,
+  WHISPER_RADIUS_MIN,
 } from './protocol'
 
 describe('encodeMessage / decodeMessage', () => {
@@ -53,8 +59,35 @@ describe('encodeMessage / decodeMessage', () => {
     expect(decodeMessage(encodeMessage(message))).toEqual(message)
   })
 
+  it('vmodeメッセージ(発音モード通知)がラウンドトリップする', () => {
+    const message: VoiceModeMessage = { t: 'vmode', mode: 'whisper', radius: 8 }
+    expect(decodeMessage(encodeMessage(message))).toEqual(message)
+  })
+
   it('壊れたデータはnullを返す', () => {
     expect(decodeMessage(new Uint8Array([0xff, 0x00, 0x12]))).toBeNull()
+  })
+})
+
+describe('発音モード', () => {
+  it('isVoiceModeは3モードだけを通す', () => {
+    expect(isVoiceMode('normal')).toBe(true)
+    expect(isVoiceMode('broadcast')).toBe(true)
+    expect(isVoiceMode('whisper')).toBe(true)
+    expect(isVoiceMode('shout')).toBe(false)
+    expect(isVoiceMode(undefined)).toBe(false)
+  })
+
+  it('clampWhisperRadiusは範囲内に収める', () => {
+    expect(clampWhisperRadius(8)).toBe(8)
+    expect(clampWhisperRadius(0)).toBe(WHISPER_RADIUS_MIN)
+    expect(clampWhisperRadius(100)).toBe(WHISPER_RADIUS_MAX)
+  })
+
+  it('clampWhisperRadiusは不正値を既定値に落とす(相手のクライアント改造対策)', () => {
+    expect(clampWhisperRadius(undefined)).toBe(WHISPER_RADIUS_DEFAULT)
+    expect(clampWhisperRadius(Number.NaN)).toBe(WHISPER_RADIUS_DEFAULT)
+    expect(clampWhisperRadius('5')).toBe(WHISPER_RADIUS_DEFAULT)
   })
 })
 
