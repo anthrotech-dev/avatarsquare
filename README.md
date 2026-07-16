@@ -29,7 +29,27 @@ cd client && pnpm dev     # クライアント (Vite)
 - LiveKitもローカルで完結させたい場合は`docker compose up -d`し、`LIVEKIT_URL=ws://localhost:7880 go run ./server`
   (この場合`.env`のキーはコメントアウトしてdevkey/secretに戻す)
 
-ブラウザで開くと自動でルーム`square`に入室します(`?room=xxx`で変更可)。
+ブラウザで開くとサーバーの`/worlds`からワールド一覧を取得し、先頭のワールドに入室します
+(`?world=xxx`でワールド選択、`?room=xxx`で入室ルームだけ変更、サーバー未対応・オフライン時は
+public同梱の`square`にフォールバック)。
+
+### ワールド
+
+マップは「ワールド」としてJSONで定義され、サーバーが配信します。ワールドJSONは
+HTMLとJavaScriptの関係で構成されます: `scene`が汎用ノードの列
+(`ground`=地面テクスチャURL / `sprite`=ビルボード画像 / `collider`=通行不可領域 /
+`text`・`bar`・`box`・`cylinder`)、`scripts`がノードをidで参照して動かす
+wasmスクリプト(Rust製、`gimmicks/`)のURLです。
+
+- サーバーは環境変数`WORLD_URLS`(カンマ区切り)で信頼できるワールドJSONのURLを指定して起動する。
+  各ワールドのLiveKitルームにボット(`__world`)として常駐し、wasmスクリプトを実行して
+  ギミック状態(かかしのHP・ボタンのカウンター等)をサーバー権威で同期する
+- `/world`でワールド一覧、`/world <id>`で移動(ロード画面を挟んで再接続)
+- ボタン等のインタラクト可能なオブジェクトは左クリック(または`/interact <id>`)
+- squareワールドの生成器は`client/scripts/generate-square/`、
+  wasmスクリプトのビルドは`gimmicks/build.sh`(成果物はコミット済みなのでRust無しでも動く)
+- ローカル開発: `WORLD_URLS='http://localhost:5174/worlds/square.json' go run .`(server/にて。
+  viteのポートは環境に合わせる)
 
 トークンサーバーのエンドポイントは既定で`https://avatarsquare-api.anthrotech.dev/token`です。
 画面上の入力欄(localStorageに保存)、`?endpoint=`クエリ、環境変数`VITE_TOKEN_URL`のいずれでも変更できます
@@ -60,7 +80,7 @@ kubectl apply -f deploy/k8s/deployment.yaml -f deploy/k8s/service.yaml
 
 ### 操作方法
 
-- 右クリック: 移動 / ホイール: ズーム / Space: ジャンプ
+- 右クリック: 移動 / 左クリック: オブジェクトにインタラクト / ホイール: ズーム / Space: ジャンプ
 - Esc: メニュー(コマンドパレット・HUDレイアウト編集・設定への入口)
 - 1〜9, 0: ホットバー実行。メニューから開くコマンドパレットの項目をドラッグ&ドロップで割当、
   スロット間ドラッグで入替、スロット外へドラッグで削除(割当はlocalStorageに保存)
