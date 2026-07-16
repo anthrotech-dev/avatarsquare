@@ -1,8 +1,8 @@
-// avatarsquareのトークンサーバー。
-// LiveKitへの入室トークン(JWT)の発行と、必要に応じてLiveKitシグナリングへの
-// リバースプロキシ(wssのTLS終端)を担う。
-// ゲームロジックのメッセージはクライアント間でLiveKit DataChannelを流れるため、
-// このサーバーは中身を解釈しない。
+// avatarsquareのトークンサーバー兼ワールドサーバー。
+// LiveKitへの入室トークン(JWT)の発行、必要に応じてLiveKitシグナリングへの
+// リバースプロキシ(wssのTLS終端)、そして起動設定(WORLD_URLS)で信頼した
+// ワールドJSONの一覧・配信を担う。
+// プレイヤー間のゲームメッセージはクライアント間でLiveKit DataChannelを流れる。
 package main
 
 import (
@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/livekit/protocol/auth"
+	"github.com/totegamma/avatarsquare/server/world"
 )
 
 var nameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
@@ -63,6 +64,21 @@ func main() {
 	tlsKey := os.Getenv("TLS_KEY")
 	// 指定するとトークン以外のパスをLiveKitへ転送する(wssのTLS終端として動く)
 	proxyTarget := os.Getenv("LIVEKIT_PROXY_TARGET")
+	// 提供するワールドJSONのURL(カンマ区切り)。サーバー管理者が信頼できる
+	// ワールドだけを列挙する。未設定なら従来どおりトークンサーバーとしてだけ動く
+	worldURLs := os.Getenv("WORLD_URLS")
+
+	var worlds *world.Registry
+	if worldURLs != "" {
+		var errs []error
+		worlds, errs = world.Load(worldURLs)
+		for _, err := range errs {
+			log.Printf("world load: %v", err)
+		}
+		for _, w := range worlds.All() {
+			log.Printf("world loaded: %s (%s) from %s", w.ID, w.Name, w.SourceURL)
+		}
+	}
 
 	// k8s等のliveness/readiness probe用。プロキシ有効時も/tokenと同様に優先される
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +92,12 @@ func main() {
 		name := r.URL.Query().Get("name")
 		if !nameRe.MatchString(room) || !nameRe.MatchString(name) {
 			http.Error(w, "room and name must match [A-Za-z0-9_-]{1,32}", http.StatusBadRequest)
+			return
+		}
+		// "__"始まりはシステム参加者(ワールドボット__world等)の予約名。
+		// 発行を許すとボットへのなりすまし・蹴落としができてしまう
+		if strings.HasPrefix(name, "__") {
+			http.Error(w, "names starting with __ are reserved", http.StatusForbidden)
 			return
 		}
 
@@ -97,6 +119,39 @@ func main() {
 			log.Printf("failed to write response: %v", err)
 		}
 	})
+
+	// ワールド一覧と個別ワールドJSONの配信。
+	// JSONはURL直接返却ではなく検証済みキャッシュをプロキシ配信する:
+	// ワールドホスト側のCORS設定に依存せず、検証を通った内容だけを配れる
+	if worlds != nil {
+		http.HandleFunc("/worlds", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			type entry struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			}
+			list := []entry{}
+			for _, def := range worlds.All() {
+				list = append(list, entry{ID: def.ID, Name: def.Name})
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(list); err != nil {
+				log.Printf("failed to write response: %v", err)
+			}
+		})
+		http.HandleFunc("/worlds/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			def := worlds.Get(strings.TrimPrefix(r.URL.Path, "/worlds/"))
+			if def == nil {
+				http.Error(w, "world not found", http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if _, err := w.Write(def.Raw); err != nil {
+				log.Printf("failed to write response: %v", err)
+			}
+		})
+	}
 
 	if proxyTarget != "" {
 		target, err := url.Parse(proxyTarget)
