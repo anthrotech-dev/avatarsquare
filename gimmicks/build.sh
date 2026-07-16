@@ -10,7 +10,7 @@ cargo build --release --target wasm32-unknown-unknown
 
 out=../client/public/gimmicks
 mkdir -p "$out"
-for name in scarecrow counter; do
+for name in scarecrow counter slime; do
   cp "target/wasm32-unknown-unknown/release/$name.wasm" "$out/$name.wasm"
 done
 ls -la "$out"

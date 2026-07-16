@@ -16,7 +16,9 @@
 //!   `asq_main(ptr,len)` / `asq_event(ptr,len)`(JSON文字列)、`asq_tick(dt_ms)`
 //! - import (module "asq"): `log(ptr,len)` / `listen(id_ptr,id_len,ev_ptr,ev_len)` /
 //!   `patch(ptr,len)`(`{"id":…,"attrs":{…}}`)/
-//!   `spawn(ptr,len)`(`{"parent":…,"node":{…}}`)/ `despawn(id_ptr,id_len)`
+//!   `spawn(ptr,len)`(`{"parent":…,"node":{…}}`)/ `despawn(id_ptr,id_len)` /
+//!   `players(buf_ptr,cap)->len`(pull型。cap不足は-必要サイズ)/
+//!   `event(ptr,len)`(`{"id":…,"name":…,"data":{…}}`、演出gevent発火)
 //!
 //! ABIのホスト側実装(正本)は server/scene/script.go を参照。
 
@@ -30,6 +32,8 @@ mod ffi {
         pub fn patch(ptr: *const u8, len: usize);
         pub fn spawn(ptr: *const u8, len: usize);
         pub fn despawn(id_ptr: *const u8, id_len: usize);
+        pub fn players(buf_ptr: *mut u8, cap: usize) -> i32;
+        pub fn event(ptr: *const u8, len: usize);
     }
 }
 
@@ -63,6 +67,48 @@ pub fn spawn(parent: Option<&str>, node: Value) {
 /// ノードを子孫ごと動的に削除する(リスナー・累積パッチも消える)
 pub fn despawn(node_id: &str) {
     unsafe { ffi::despawn(node_id.as_ptr(), node_id.len()) }
+}
+
+/// ワールド内のプレイヤー(参加者)。座標はワールドXZ、id昇順で返る
+#[derive(serde::Deserialize, Clone, Debug)]
+pub struct Player {
+    pub id: String,
+    pub x: f64,
+    pub z: f64,
+}
+
+/// 現在ワールドにいる全プレイヤーの位置を取得する(pull型)。
+/// tick内など必要なときに呼ぶ。誰もいなければ空
+pub fn get_all_players() -> Vec<Player> {
+    let mut buf = vec![0u8; 1024];
+    let mut written = unsafe { ffi::players(buf.as_mut_ptr(), buf.len()) };
+    if written < 0 {
+        // バッファ不足: ホストが必要サイズを負値で返すので広げて再試行
+        buf.resize((-written) as usize, 0);
+        written = unsafe { ffi::players(buf.as_mut_ptr(), buf.len()) };
+    }
+    if written <= 0 {
+        return Vec::new();
+    }
+    #[derive(serde::Deserialize)]
+    struct Payload {
+        players: Vec<Player>,
+    }
+    serde_json::from_slice::<Payload>(&buf[..written as usize])
+        .map(|p| p.players)
+        .unwrap_or_default()
+}
+
+/// idでプレイヤーを取得する。いなければNone(退室検知にも使える)
+pub fn get_player_by_id(id: &str) -> Option<Player> {
+    get_all_players().into_iter().find(|p| p.id == id)
+}
+
+/// 演出イベント(gevent)を全クライアントへ配信する。idは存在するノードのid。
+/// クライアントはnameのエフェクトをdataのx/z(無ければノード位置)に表示する
+pub fn event(node_id: &str, name: &str, data: Value) {
+    let payload = json!({ "id": node_id, "name": name, "data": data }).to_string();
+    unsafe { ffi::event(payload.as_ptr(), payload.len()) }
 }
 
 /// 購読したノードに起きたイベント

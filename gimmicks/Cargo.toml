@@ -2,7 +2,7 @@
 # サーバー(wazero)が実行する。ビルドはbuild.sh(成果物はclient/public/gimmicks/へ)
 [workspace]
 resolver = "2"
-members = ["sdk", "scarecrow", "counter"]
+members = ["sdk", "scarecrow", "counter", "slime"]
 
 [workspace.dependencies]
 asq-sdk = { path = "sdk" }
