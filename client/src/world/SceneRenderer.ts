@@ -96,10 +96,17 @@ export class SceneRenderer {
   private readonly parents = new Map<string, string | null>()
   private readonly disposables: Array<{ dispose(): void }> = []
 
+  /** barのデータバインド: sourceノードid → そのノードの属性から再描画する関数群 */
+  private readonly barBindings = new Map<string, Set<() => void>>()
+
   constructor(world: WorldDef, worldUrl: string) {
     for (const node of world.scene) {
       const object = this.buildTree(node, null, world, worldUrl)
       if (object) this.group.add(object)
+    }
+    // sourceが自分より後に定義されたノードを指すバインドもあるため、構築後に一巡させる
+    for (const bindings of this.barBindings.values()) {
+      for (const refresh of bindings) refresh()
     }
   }
 
@@ -113,7 +120,7 @@ export class SceneRenderer {
     world: WorldDef,
     worldUrl: string,
   ): THREE.Object3D | null {
-    const view = this.buildNode(node, world, worldUrl)
+    const view = this.buildNode(node, world, worldUrl, parent)
     if (!view) return null
     // 共通属性の初期反映(位置・向き・表示)
     this.applyCommonAttrs(view, node)
@@ -181,6 +188,9 @@ export class SceneRenderer {
     Object.assign(view.def, attrs)
     this.applyCommonAttrs(view, view.def)
     view.applyAttrs(attrs)
+    // このノードをsourceにしているbarを再描画する(データバインド)
+    const bindings = this.barBindings.get(id)
+    if (bindings) for (const refresh of bindings) refresh()
   }
 
   /** 入室時スナップショット(ノードごとの累積パッチ)の一括反映 */
@@ -198,6 +208,7 @@ export class SceneRenderer {
     for (const d of this.disposables) d.dispose()
     this.views.clear()
     this.parents.clear()
+    this.barBindings.clear()
     this.group.removeFromParent()
   }
 
@@ -206,7 +217,12 @@ export class SceneRenderer {
     return resource
   }
 
-  private buildNode(node: SceneNode, world: WorldDef, worldUrl: string): NodeView | null {
+  private buildNode(
+    node: SceneNode,
+    world: WorldDef,
+    worldUrl: string,
+    parent: string | null,
+  ): NodeView | null {
     switch (node.kind) {
       case 'group':
         // 空のコンテナ(div相当)。エンティティのデータ属性の置き場+子の座標基準
@@ -218,7 +234,7 @@ export class SceneRenderer {
       case 'text':
         return this.buildText(node)
       case 'bar':
-        return this.buildBar(node)
+        return this.buildBar(node, parent)
       case 'box':
       case 'cylinder':
         return this.buildPrimitive(node)
@@ -338,7 +354,13 @@ export class SceneRenderer {
     }
   }
 
-  private buildBar(node: SceneNode): NodeView {
+  /**
+   * ゲージバー。sourceを指定すると「他ノードの属性値を表示する」データバインドになる:
+   * source("parent"または任意のノードid)のvalueFrom属性を現在値、maxFrom属性を
+   * 最大値として描画し、sourceノードへのパッチで自動的に再描画される。
+   * source無しは従来どおり自前のvalue(0..1)を表示する
+   */
+  private buildBar(node: SceneNode, parent: string | null): NodeView {
     const billboard = new (class extends CanvasBillboard {
       setValue(value: number): void {
         const clamped = Math.max(0, Math.min(1, value))
@@ -360,13 +382,41 @@ export class SceneRenderer {
     billboard.setValue(num(node.value, 1))
     const group = new THREE.Group()
     group.add(billboard.sprite)
+
+    const sourceId =
+      node.source === 'parent' ? parent : typeof node.source === 'string' ? node.source : null
+    let unbind = () => {}
+    if (sourceId) {
+      const valueFrom = typeof node.valueFrom === 'string' ? node.valueFrom : 'value'
+      const maxFrom = typeof node.maxFrom === 'string' ? node.maxFrom : null
+      const refresh = () => {
+        const source = this.getNode(sourceId)
+        if (!source) return
+        const value = source[valueFrom]
+        if (typeof value !== 'number' || !Number.isFinite(value)) return
+        const max = maxFrom ? source[maxFrom] : null
+        billboard.setValue(typeof max === 'number' && max > 0 ? value / max : value)
+      }
+      let bindings = this.barBindings.get(sourceId)
+      if (!bindings) {
+        bindings = new Set()
+        this.barBindings.set(sourceId, bindings)
+      }
+      bindings.add(refresh)
+      unbind = () => bindings.delete(refresh)
+      refresh()
+    }
+
     return {
       def: node,
       object: group,
       applyAttrs: (attrs) => {
-        if ('value' in attrs) billboard.setValue(num(node.value, 1))
+        if (!sourceId && 'value' in attrs) billboard.setValue(num(node.value, 1))
       },
-      dispose: () => billboard.dispose(),
+      dispose: () => {
+        unbind()
+        billboard.dispose()
+      },
     }
   }
 

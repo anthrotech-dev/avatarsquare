@@ -472,21 +472,36 @@ function buildWorldJson(): string {
   })
 
   // ギミックのサンプル: かかし(攻撃でHP減少・倒れて復活)とカウンターボタン。
-  // ノードは汎用プリミティブ(sprite/bar/cylinder/text)で、振る舞いは
-  // scripts のwasm(gimmicks/)がノードのscarecrow/counter属性を見て担う
+  // ノードは汎用プリミティブ(group/sprite/bar/cylinder/text)で、振る舞いは
+  // scripts のwasm(gimmicks/)がノードのscarecrow/counter属性を見て担う。
+  // かかしはツリー構造の実例: 親groupがデータ(hp等)を持ち、子がビジュアル。
+  // HPゲージは親のhp/hpMax属性を表示するデータバインドbar
   scene.push(
     {
       id: 'scarecrow',
-      kind: 'sprite',
-      image: 'square/scarecrow.png',
+      kind: 'group',
       x: -6,
       z: -3,
-      w: 1.2,
-      h: 1.6,
       collider: 0.5,
-      scarecrow: { hp: 100, respawnMs: 5000, bar: 'scarecrow-hp' },
+      targetable: true,
+      name: 'かかし',
+      hp: 100,
+      hpMax: 100,
+      scarecrow: { hp: 100, respawnMs: 5000 },
+      children: [
+        { id: 'scarecrow-visual', kind: 'sprite', image: 'square/scarecrow.png', w: 1.2, h: 1.6 },
+        {
+          id: 'scarecrow-hp',
+          kind: 'bar',
+          y: 2.0,
+          w: 1.2,
+          h: 0.16,
+          source: 'parent',
+          valueFrom: 'hp',
+          maxFrom: 'hpMax',
+        },
+      ],
     },
-    { id: 'scarecrow-hp', kind: 'bar', x: -6, z: -3, y: 2.0, w: 1.2, h: 0.16, value: 1 },
     {
       id: 'counter-button',
       kind: 'cylinder',

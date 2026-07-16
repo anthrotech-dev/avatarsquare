@@ -20,9 +20,14 @@ const testWorldJSON = `{
   "size": 60,
   "spawn": {"x": 0, "z": 0},
   "scene": [
-    {"id": "scarecrow", "kind": "sprite", "x": 0, "z": 5, "collider": 0.5,
-     "scarecrow": {"hp": 30, "respawnMs": 300, "bar": "scarecrow-hp"}},
-    {"id": "scarecrow-hp", "kind": "bar", "x": 0, "z": 5, "y": 2, "value": 1},
+    {"id": "scarecrow", "kind": "group", "x": 0, "z": 5, "collider": 0.5,
+     "targetable": true, "name": "かかし", "hp": 30, "hpMax": 30,
+     "scarecrow": {"hp": 30, "respawnMs": 300},
+     "children": [
+       {"id": "scarecrow-visual", "kind": "sprite", "w": 1.2, "h": 1.6},
+       {"id": "scarecrow-hp", "kind": "bar", "y": 2,
+        "source": "parent", "valueFrom": "hp", "maxFrom": "hpMax"}
+     ]},
     {"id": "counter-button", "kind": "cylinder", "x": 3, "z": 0, "r": 0.4, "interactable": true,
      "counter": {"label": "counter-label"}},
     {"id": "counter-label", "kind": "text", "x": 3, "z": 0, "y": 1.5, "text": "0"}
@@ -116,14 +121,14 @@ func actMsg(name string, x, z, yaw float64, tx, tz *float64) []byte {
 func TestScarecrowHitAndRespawn(t *testing.T) {
 	session, ch := newTestSession(t)
 
-	// かかし(0,5)の手前からyaw=0(+Z向き)で斬撃 → gevent hit + HPバー減少
+	// かかし(0,5)の手前からyaw=0(+Z向き)で斬撃 → gevent hit + hp属性の減少パッチ
 	session.HandleMessage("alice", actMsg("slash", 0, 3.5, 0, nil, nil))
 	waitFor(t, ch, "gevent hit", func(r broadcastRec) bool {
 		return r.msg["t"] == "gevent" && r.msg["id"] == "scarecrow" && r.msg["name"] == "hit"
 	})
-	rec := waitFor(t, ch, "hp bar patch", func(r broadcastRec) bool { return isPatch(r, "scarecrow-hp") })
-	if v := attrs(rec)["value"].(float64); v < 0.66 || v > 0.67 {
-		t.Errorf("hp bar value = %v, want ~0.667 (20/30)", v)
+	rec := waitFor(t, ch, "hp patch", func(r broadcastRec) bool { return isPatch(r, "scarecrow") })
+	if v := attrs(rec)["hp"].(float64); v != 20 {
+		t.Errorf("hp = %v, want 20", v)
 	}
 
 	// 射程外からの斬撃は当たらない(パッチが来ない)
@@ -138,18 +143,20 @@ func TestScarecrowHitAndRespawn(t *testing.T) {
 	rec = waitFor(t, ch, "down patch", func(r broadcastRec) bool {
 		return isPatch(r, "scarecrow") && attrs(r)["visible"] == false
 	})
-	_ = rec
+	if v := attrs(rec)["hp"].(float64); v != 0 {
+		t.Errorf("down hp = %v, want 0", v)
+	}
 
 	// 倒れている間は当たらない(nodeState.visible=falseでスキップ)
 	session.HandleMessage("alice", actMsg("slash", 0, 3.5, 0, nil, nil))
 
-	// respawnMs(300ms)+tick後に復活(visible true + バー全快)
-	waitFor(t, ch, "respawn patch", func(r broadcastRec) bool {
+	// respawnMs(300ms)+tick後に復活(visible true + hp全快)
+	rec = waitFor(t, ch, "respawn patch", func(r broadcastRec) bool {
 		return isPatch(r, "scarecrow") && attrs(r)["visible"] == true
 	})
-	rec = waitFor(t, ch, "hp bar refill", func(r broadcastRec) bool {
-		return isPatch(r, "scarecrow-hp") && attrs(r)["value"] == 1.0
-	})
+	if v := attrs(rec)["hp"].(float64); v != 30 {
+		t.Errorf("respawn hp = %v, want 30", v)
+	}
 }
 
 func TestCounterInteractAndSnapshot(t *testing.T) {

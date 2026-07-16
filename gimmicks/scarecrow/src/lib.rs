@@ -2,10 +2,12 @@
 //!
 //! 対象ノードはシーン側で宣言する。ノードに `scarecrow` 属性があれば管理対象:
 //! ```jsonc
-//! { "id": "scarecrow", "kind": "sprite", ...,
-//!   "scarecrow": { "hp": 100, "respawnMs": 5000, "bar": "scarecrow-hp" } }
+//! { "id": "scarecrow", "kind": "group", "hp": 100, "hpMax": 100, ...,
+//!   "scarecrow": { "hp": 100, "respawnMs": 5000 },
+//!   "children": [ /* sprite や source:"parent" のbar など */ ] }
 //! ```
-//! `bar` はHP表示に使うbarノードのid(省略可)。
+//! HPはノード自身の `hp` 属性としてpatchで公開する。ゲージ表示は
+//! ワールド側が `bar`(source/valueFrom/maxFrom)を子に置いて実現する。
 
 use asq_sdk::{json, listen, log, patch, Event, Script, Value};
 use std::collections::HashMap;
@@ -16,8 +18,6 @@ struct Target {
     hp: i64,
     max_hp: i64,
     respawn_ms: i64,
-    /// HPゲージのノードid(省略可)
-    bar: Option<String>,
     /// 倒れている間の復活までの残り時間(ms)
     down_left: i64,
 }
@@ -47,7 +47,6 @@ impl Script for Scarecrow {
                     hp: max_hp,
                     max_hp,
                     respawn_ms: config["respawnMs"].as_i64().unwrap_or(5000),
-                    bar: config["bar"].as_str().map(String::from),
                     down_left: 0,
                 },
             );
@@ -68,12 +67,11 @@ impl Script for Scarecrow {
             return;
         }
         target.hp = (target.hp - DAMAGE_PER_HIT).max(0);
-        if let Some(bar) = &target.bar {
-            patch(bar, json!({ "value": target.hp as f64 / target.max_hp as f64 }));
-        }
         if target.hp == 0 {
             target.down_left = target.respawn_ms;
-            patch(&event.node, json!({ "visible": false }));
+            patch(&event.node, json!({ "hp": target.hp, "visible": false }));
+        } else {
+            patch(&event.node, json!({ "hp": target.hp }));
         }
     }
 
@@ -85,10 +83,7 @@ impl Script for Scarecrow {
             target.down_left -= dt_ms as i64;
             if target.down_left <= 0 {
                 target.hp = target.max_hp;
-                patch(id, json!({ "visible": true }));
-                if let Some(bar) = &target.bar {
-                    patch(bar, json!({ "value": 1.0 }));
-                }
+                patch(id, json!({ "visible": true, "hp": target.max_hp }));
             }
         }
     }
