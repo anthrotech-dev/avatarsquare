@@ -460,7 +460,7 @@ body,
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
-.hud-context-menu button {
+.hud-context-menu > button {
   border: none;
   background: transparent;
   text-align: left;
@@ -468,8 +468,48 @@ body,
   border-radius: 5px;
 }
 
-.hud-context-menu button:hover {
+.hud-context-menu > button:hover {
   background: #3a4a5f;
+}
+
+/* --- アンカーピッカー(コンテキストメニュー内の3×3グリッド) --- */
+
+.hud-anchor-picker {
+  padding: 4px 6px 8px;
+  border-bottom: 1px solid #4a5568;
+  margin-bottom: 4px;
+}
+
+.hud-anchor-picker-title {
+  font-size: 11px;
+  color: #a8b2c2;
+  margin-bottom: 6px;
+}
+
+.hud-anchor-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 24px);
+  gap: 4px;
+  justify-content: start;
+}
+
+.hud-anchor-picker-grid button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #4a5568;
+  border-radius: 4px;
+  background: rgba(45, 55, 72, 0.6);
+  cursor: pointer;
+}
+
+.hud-anchor-picker-grid button:hover {
+  background: #3a4a5f;
+}
+
+.hud-anchor-picker-grid button.selected {
+  background: #4c7dd0;
+  border-color: #7ba7e8;
 }
 
 /* デフォルト位置はターゲットHUD(top:12px中央)と重ならないよう一段下げる */

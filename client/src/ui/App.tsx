@@ -89,13 +89,13 @@ export function App() {
       <HudElement id="connection" label="接続情報">
         <ConnectionPanel />
       </HudElement>
-      <HudElement id="target" label="ターゲット">
+      <HudElement id="target" label="ターゲット" defaultAnchor={{ h: 'center', v: 'top' }}>
         <TargetPanel />
       </HudElement>
-      <HudElement id="chat" label="チャット">
+      <HudElement id="chat" label="チャット" defaultAnchor={{ h: 'left', v: 'bottom' }}>
         <ChatWindow />
       </HudElement>
-      <HudElement id="vc" label="ボイスチャット">
+      <HudElement id="vc" label="ボイスチャット" defaultAnchor={{ h: 'right', v: 'top' }}>
         <VoicePanel />
       </HudElement>
       {hotbars
@@ -109,6 +109,7 @@ export function App() {
             id={`hotbar-${h.seq}`}
             label={`ホットバー${h.seq}`}
             anchorClass="hud-anchor-hotbar"
+            defaultAnchor={{ h: 'center', v: 'bottom' }}
             anchorStyle={{ '--hud-stack': stack } as React.CSSProperties}
             menuItems={[
               { label: 'キー設定...', onClick: () => setHudDetailOpen(h.seq) },

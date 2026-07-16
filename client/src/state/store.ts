@@ -11,7 +11,7 @@ import {
 import {
   type HudElementId,
   type HudLayout,
-  type HudPosition,
+  type HudPlacement,
   type HudVisibility,
   loadHudLayout,
   loadHudVisibility,
@@ -171,7 +171,7 @@ interface AppState {
   requestChatFocus: () => void
   requestVrmPicker: () => void
   setSettingsOpen: (settingsOpen: boolean) => void
-  setHudPosition: (id: HudElementId, pos: HudPosition | null) => void
+  setHudPlacement: (id: HudElementId, placement: HudPlacement | null) => void
   setHudVisibility: (id: HudElementId, visible: boolean) => void
   resetHudLayout: () => void
   setHudEditMode: (on: boolean) => void
@@ -350,10 +350,10 @@ export const useAppStore = create<AppState>((set) => ({
   requestChatFocus: () => set((state) => ({ chatFocusVersion: state.chatFocusVersion + 1 })),
   requestVrmPicker: () => set((state) => ({ vrmPickerVersion: state.vrmPickerVersion + 1 })),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
-  setHudPosition: (id, pos) =>
+  setHudPlacement: (id, placement) =>
     set((state) => {
       const hudLayout = { ...state.hudLayout }
-      if (pos) hudLayout[id] = pos
+      if (placement) hudLayout[id] = placement
       else delete hudLayout[id]
       saveHudLayout(hudLayout)
       return { hudLayout }

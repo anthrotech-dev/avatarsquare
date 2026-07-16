@@ -7,13 +7,15 @@ interface Props {
   pos: { x: number; y: number }
   items: ContextMenuItem[]
   onClose: () => void
+  /** ボタンリストの上に出す追加コンテンツ(アンカーピッカーなど) */
+  children?: React.ReactNode
 }
 
 /**
  * HUD編集モードで要素を右クリックしたときのメニュー。
  * 透明バックドロップで外側クリック(右クリック含む)を拾って閉じる。
  */
-export function HudContextMenu({ pos, items, onClose }: Props) {
+export function HudContextMenu({ pos, items, onClose, children }: Props) {
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: 外側クリックで閉じるためのスクリム(操作対象ではない)
     <div
@@ -29,6 +31,7 @@ export function HudContextMenu({ pos, items, onClose }: Props) {
         style={{ left: pos.x, top: pos.y }}
         onPointerDown={(e) => e.stopPropagation()}
       >
+        {children}
         {items.map((item) => (
           <button
             key={item.label}
