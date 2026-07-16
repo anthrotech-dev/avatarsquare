@@ -35,7 +35,11 @@ function HotbarSlotButton({ seq, index, slot, keybind }: SlotProps) {
   )
 
   useEffect(() => {
-    if (!cooldown) return
+    // キャンセル(発動不成立の返金)でnullに戻ったら表示も即座に消す
+    if (!cooldown) {
+      setOnCooldown(false)
+      return
+    }
     setOnCooldown(true)
     let raf = 0
     const tick = () => {

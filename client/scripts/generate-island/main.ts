@@ -337,21 +337,32 @@ function buildWorldJson(): string {
     },
   )
 
-  // かかし(squareと同じwasmを流用。同じスクリプトが複数ワールドで動く)
-  scene.push(
-    {
-      id: 'scarecrow',
-      kind: 'sprite',
-      image: 'square/scarecrow.png',
-      x: -6,
-      z: 6,
-      w: 1.2,
-      h: 1.6,
-      collider: 0.5,
-      scarecrow: { hp: 100, respawnMs: 5000, bar: 'scarecrow-hp' },
-    },
-    { id: 'scarecrow-hp', kind: 'bar', x: -6, z: 6, y: 2.0, w: 1.2, h: 0.16, value: 1 },
-  )
+  // かかし(squareと同じwasm・同じツリー構造を流用。同じスクリプトが複数ワールドで動く)
+  scene.push({
+    id: 'scarecrow',
+    kind: 'group',
+    x: -6,
+    z: 6,
+    collider: 0.5,
+    targetable: true,
+    name: 'かかし',
+    hp: 100,
+    hpMax: 100,
+    scarecrow: { hp: 100, respawnMs: 5000 },
+    children: [
+      { id: 'scarecrow-visual', kind: 'sprite', image: 'square/scarecrow.png', w: 1.2, h: 1.6 },
+      {
+        id: 'scarecrow-hp',
+        kind: 'bar',
+        y: 2.0,
+        w: 1.2,
+        h: 0.16,
+        source: 'parent',
+        valueFrom: 'hp',
+        maxFrom: 'hpMax',
+      },
+    ],
+  })
 
   // 帰りのポータル(→はじまりの広場)。portal属性はクライアントが解釈する
   scene.push(
