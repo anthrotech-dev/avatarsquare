@@ -371,12 +371,22 @@ export class Game {
         // 選択中のエンティティ(またはその祖先)が消えたら選択も自動解除される
         if (this.selectedTargetId) this.pushTargetToStore()
         break
-      case 'gevent':
-        if (message.name === 'hit') {
-          const pos = renderer.worldPosition(message.id)
-          if (pos) this.effects.spawn({ kind: 'hitflash', x: pos.x, z: pos.z })
-        }
+      case 'gevent': {
+        // 演出イベントは名前をエフェクトkindに対応させる(未知kindはEffectSystemが
+        // 無視するので前方互換)。座標はdataのx/zがあればそれ、無ければノード位置
+        const kind = message.name === 'hit' ? 'hitflash' : message.name
+        const dx = message.data?.x
+        const dz = message.data?.z
+        const pos =
+          typeof dx === 'number' &&
+          Number.isFinite(dx) &&
+          typeof dz === 'number' &&
+          Number.isFinite(dz)
+            ? { x: dx, z: dz }
+            : renderer.worldPosition(message.id)
+        if (pos) this.effects.spawn({ kind, x: pos.x, z: pos.z })
         break
+      }
     }
   }
 
@@ -468,6 +478,23 @@ export class Game {
     } else {
       this.targetRing.clear()
     }
+  }
+
+  /**
+   * 選択リングを対象の表示位置(補間中座標)へ毎フレーム追従させる。
+   * 移動するエンティティ(スライム等)を選択したままでも滑らかに付いていく
+   */
+  private updateTargetRing(): void {
+    const id = this.selectedTargetId
+    if (!id) return
+    const renderer = this.sceneRenderer
+    const node = renderer?.getNode(id)
+    // 非表示・消滅時のリングはpushTargetToStoreがclear済みなので触らない
+    if (!node || node.visible === false) return
+    const pos = renderer?.viewWorldPosition(id)
+    if (!pos) return
+    const radius = typeof node.collider === 'number' && node.collider > 0 ? node.collider : 0.5
+    this.targetRing.set({ x: pos.x, z: pos.z, radius })
   }
 
   /**
@@ -1148,6 +1175,8 @@ export class Game {
     this.avatar.update(delta)
     this.updateMarkers(delta)
     this.effects.update(delta)
+    this.sceneRenderer?.update(delta) // 動的ノードの位置パッチ補間
+    this.updateTargetRing()
     this.whisperRings.update(SELF_RING_ID, this.avatar.position, this.remotes.positions())
     this.remotes.update(delta, this.camera.quaternion)
     this.streamer.update(delta, this.scene, this.avatar.position, CAMERA_DIR)

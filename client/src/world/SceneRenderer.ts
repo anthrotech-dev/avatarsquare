@@ -23,6 +23,11 @@ function num(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
+/** 位置パッチの補間速度(RemoteAvatarsと同じ指数追従の実績値) */
+const LERP_SPEED = 12
+
+const tmpVec = new THREE.Vector3()
+
 /** 足元の楕円影(2Dルック用のフェイクシャドウ) */
 function makeBlobShadow(radius: number): THREE.Mesh {
   const mesh = new THREE.Mesh(
@@ -98,6 +103,8 @@ export class SceneRenderer {
 
   /** barのデータバインド: sourceノードid → そのノードの属性から再描画する関数群 */
   private readonly barBindings = new Map<string, Set<() => void>>()
+  /** 位置パッチの補間先。収束したら消える(静的なワールドではコストゼロ) */
+  private readonly lerpTargets = new Map<string, THREE.Vector3>()
 
   constructor(
     private readonly world: WorldDef,
@@ -125,8 +132,8 @@ export class SceneRenderer {
   ): THREE.Object3D | null {
     const view = this.buildNode(node, world, worldUrl, parent)
     if (!view) return null
-    // 共通属性の初期反映(位置・向き・表示)
-    this.applyCommonAttrs(view, node)
+    // 共通属性の初期反映(位置・向き・表示)。初回は即時セット
+    this.applyCommonAttrs(view, node, true)
     // レイキャストからノードを特定できるようにidを付与する。
     // 子ノードの構築より先にtraverseすること(子のidを親のidで潰さない)
     view.object.traverse((obj) => {
@@ -163,6 +170,17 @@ export class SceneRenderer {
   }
 
   /**
+   * ノードのビュー実位置(補間中の表示座標)のワールドXZ。選択リング追従などの
+   * 表示用途専用。判定・ロジックには権威座標のworldPosition()を使うこと
+   */
+  viewWorldPosition(id: string): { x: number; z: number } | null {
+    const view = this.views.get(id)
+    if (!view) return null
+    view.object.getWorldPosition(tmpVec)
+    return { x: tmpVec.x, z: tmpVec.z }
+  }
+
+  /**
    * ノード自身から親方向へ辿り、attrがtrueの最近傍ノードidを返す。
    * レイキャストは子(ビジュアル)に当たるため、エンティティルートへの解決に使う
    */
@@ -184,19 +202,23 @@ export class SceneRenderer {
       .map(([, v]) => v.object)
   }
 
-  /** サーバーからの属性パッチを反映する(サーバー権威。値の意味は解釈しない) */
-  applyPatch(id: string, attrs: Record<string, unknown>): void {
+  /**
+   * サーバーからの属性パッチを反映する(サーバー権威。値の意味は解釈しない)。
+   * 位置は既定で補間ターゲットの更新のみ(update()が毎フレーム追従させる)。
+   * immediate=trueで即時反映(入室時スナップショット用)
+   */
+  applyPatch(id: string, attrs: Record<string, unknown>, immediate = false): void {
     const view = this.views.get(id)
     if (!view) return
     Object.assign(view.def, attrs)
-    this.applyCommonAttrs(view, view.def)
+    this.applyCommonAttrs(view, view.def, immediate)
     view.applyAttrs(attrs)
     // このノードをsourceにしているbarを再描画する(データバインド)
     const bindings = this.barBindings.get(id)
     if (bindings) for (const refresh of bindings) refresh()
   }
 
-  /** 入室時スナップショット(despawn→spawn→累積パッチの順)の一括反映 */
+  /** 入室時スナップショット(despawn→spawn→累積パッチの順)の一括反映。位置は即時 */
   applySnapshot(
     patches: Record<string, Record<string, unknown>>,
     spawns?: Array<{ parent?: string; node: Record<string, unknown> }>,
@@ -204,7 +226,25 @@ export class SceneRenderer {
   ): void {
     for (const id of despawns ?? []) this.applyDespawn(id)
     for (const spawn of spawns ?? []) this.applySpawn(spawn.parent, spawn.node)
-    for (const [id, attrs] of Object.entries(patches)) this.applyPatch(id, attrs)
+    for (const [id, attrs] of Object.entries(patches)) this.applyPatch(id, attrs, true)
+  }
+
+  /** 毎フレーム: 位置パッチの補間。収束したノードはループから外れる */
+  update(delta: number): void {
+    if (this.lerpTargets.size === 0) return
+    const t = Math.min(1, LERP_SPEED * delta)
+    for (const [id, target] of this.lerpTargets) {
+      const object = this.views.get(id)?.object
+      if (!object) {
+        this.lerpTargets.delete(id)
+        continue
+      }
+      object.position.lerp(target, t)
+      if (object.position.distanceToSquared(target) < 1e-6) {
+        object.position.copy(target)
+        this.lerpTargets.delete(id)
+      }
+    }
   }
 
   /**
@@ -244,6 +284,7 @@ export class SceneRenderer {
       this.views.delete(removedId)
       this.parents.delete(removedId)
       this.barBindings.delete(removedId)
+      this.lerpTargets.delete(removedId)
     }
     view.object.removeFromParent()
   }
@@ -261,8 +302,22 @@ export class SceneRenderer {
     return out
   }
 
-  private applyCommonAttrs(view: NodeView, def: SceneNode): void {
-    view.object.position.set(num(def.x, 0), num(def.y, 0), num(def.z, 0))
+  /**
+   * 共通属性(位置・表示)の反映。immediate=true(初回構築・スナップショット)は
+   * 位置を即時セット、falseは補間ターゲットの更新のみ。visibleは常に即時
+   */
+  private applyCommonAttrs(view: NodeView, def: SceneNode, immediate: boolean): void {
+    const x = num(def.x, 0)
+    const y = num(def.y, 0)
+    const z = num(def.z, 0)
+    if (immediate) {
+      view.object.position.set(x, y, z)
+      this.lerpTargets.delete(def.id)
+    } else {
+      const target = this.lerpTargets.get(def.id)
+      if (target) target.set(x, y, z)
+      else this.lerpTargets.set(def.id, new THREE.Vector3(x, y, z))
+    }
     view.object.visible = def.visible !== false
   }
 
@@ -272,6 +327,7 @@ export class SceneRenderer {
     this.views.clear()
     this.parents.clear()
     this.barBindings.clear()
+    this.lerpTargets.clear()
     this.group.removeFromParent()
   }
 
