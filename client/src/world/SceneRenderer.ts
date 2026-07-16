@@ -121,8 +121,7 @@ export class SceneRenderer {
   }
 
   /**
-   * ノードとその子孫を構築する。子はTHREE.Groupのネストで親に相対配置される。
-   * ビュー化されないノード(collider等)の子孫は描画されない
+   * ノードとその子孫を構築する。子はTHREE.Groupのネストで親に相対配置される
    */
   private buildTree(
     node: SceneNode,
@@ -358,7 +357,9 @@ export class SceneRenderer {
       case 'cylinder':
         return this.buildPrimitive(node)
       case 'collider':
-        return null // 不可視。通行判定はWorldDef.getObstaclesが担う
+        // 不可視(空Group)。通行判定はWorldDef.getObstaclesが担うが、
+        // spawn/despawn後のnavGrid再構築(liveScene)に含めるためビュー化はする
+        return { def: node, object: new THREE.Group(), applyAttrs: () => {}, dispose: () => {} }
       default: {
         // 未知kindはプレースホルダ(前方互換: 新しいワールドを古いクライアントでも歩ける)
         const geometry = this.track(new THREE.BoxGeometry(0.6, 0.6, 0.6))

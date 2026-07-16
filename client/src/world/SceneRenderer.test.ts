@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SceneRenderer } from './SceneRenderer'
-import { parseWorld } from './WorldDef'
+import { buildNavGrid, parseWorld } from './WorldDef'
 
 // group(空コンテナ)のみのワールドはDOM/canvas不要でnode環境でも構築できる。
 // ツリー解決・位置パッチ補間・動的spawn/despawnの純ロジックをここで固定する
@@ -84,5 +84,50 @@ describe('SceneRenderer(ツリー・補間・動的ノード)', () => {
     const r = makeRenderer()
     r.applySpawn(undefined, { id: 'entity', kind: 'group', x: 9, z: 9 })
     expect(r.worldPosition('entity')).toEqual({ x: 1, z: 2 })
+  })
+
+  // 回帰: spawn後のnavGrid再構築はliveScene()を入力にするため、colliderノードが
+  // ここから欠落すると既存の通行不可領域(海・噴水)が消えて水上を歩けてしまう
+  it('liveSceneはcolliderノードを含み、spawn後の再構築でも通行不可が保たれる', () => {
+    const world = parseWorld({
+      id: 'test',
+      size: 20,
+      scene: [
+        { id: 'pond', kind: 'collider', shape: 'circle', x: 5, z: 5, r: 2 },
+        {
+          id: 'terrain',
+          kind: 'group',
+          x: -4,
+          z: -4,
+          children: [
+            {
+              id: 'sea',
+              kind: 'collider',
+              shape: 'polygon',
+              x: -1,
+              z: -1,
+              points: [
+                [-2, -2],
+                [2, -2],
+                [2, 2],
+                [-2, 2],
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    const r = new SceneRenderer(world, 'http://localhost/worlds/test.json')
+    r.applySpawn(undefined, { id: 'slime', kind: 'group', x: 0, z: 0 })
+
+    const live = r.liveScene()
+    expect(live.find((n) => n.id === 'pond')).toMatchObject({ kind: 'collider', x: 5, z: 5 })
+    // ネストされたcolliderはワールド座標に解決される(-4 + -1 = -5)
+    expect(live.find((n) => n.id === 'sea')).toMatchObject({ kind: 'collider', x: -5, z: -5 })
+
+    const grid = buildNavGrid({ ...world, scene: live })
+    expect(grid.isWalkableAt(5, 5)).toBe(false) // circle collider内
+    expect(grid.isWalkableAt(-5, -5)).toBe(false) // polygon collider内
+    expect(grid.isWalkableAt(0, 0)).toBe(true) // スライム(collider属性なし)は塞がない
   })
 })
