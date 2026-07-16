@@ -23,7 +23,8 @@ const interactRange = 3.0
 // 初期値はワールドJSON、以後はスクリプトのpatchで更新される
 type nodeState struct {
 	def     *world.Node
-	x, z    float64
+	parent  string  // 親ノードid(x,zは親相対)。トップレベルは空
+	x, z    float64 // 親相対座標
 	radius  float64 // hit判定・通行の半径
 	visible bool
 }
@@ -69,7 +70,10 @@ func NewSession(def *world.Def, runtime *Runtime, broadcast func(data []byte, to
 		if radius <= 0 {
 			radius = defaultHitRadius
 		}
-		s.nodes[node.ID] = &nodeState{def: node, x: node.X, z: node.Z, radius: radius, visible: true}
+		s.nodes[node.ID] = &nodeState{
+			def: node, parent: node.Parent,
+			x: node.X, z: node.Z, radius: radius, visible: true,
+		}
 	}
 	s.env = &hostEnv{
 		onListen: func(sc *script, nodeID, event string) {
@@ -196,6 +200,22 @@ func (s *Session) Forget(identity string) {
 	s.enqueue(func() { delete(s.positions, identity) })
 }
 
+// worldXZ はノードのワールド座標(親チェーンの相対座標を合算)。
+// 循環・異常な深さはdepth上限で打ち切る
+func (s *Session) worldXZ(node *nodeState) (float64, float64) {
+	x, z := node.x, node.z
+	for depth := 0; node.parent != "" && depth < 16; depth++ {
+		parent, ok := s.nodes[node.parent]
+		if !ok {
+			break
+		}
+		node = parent
+		x += node.x
+		z += node.z
+	}
+	return x, z
+}
+
 // handleAct は攻撃(act)のジオメトリ判定。hitリスナーのあるノードに当たれば
 // スクリプトへhitイベントを配送し、全員へgevent(演出トリガー)を配る
 func (s *Session) handleAct(sender string, msg incomingMessage) {
@@ -208,13 +228,14 @@ func (s *Session) handleAct(sender string, msg incomingMessage) {
 		if !ok || !node.visible {
 			continue
 		}
+		nx, nz := s.worldXZ(node)
 		hit := false
 		switch msg.Name {
 		case "slash":
-			hit = slashHits(msg.X, msg.Z, msg.Yaw, node.x, node.z, node.radius)
+			hit = slashHits(msg.X, msg.Z, msg.Yaw, nx, nz, node.radius)
 		case "shoot":
 			if msg.Tx != nil && msg.Tz != nil {
-				hit = shootHits(msg.X, msg.Z, *msg.Tx, *msg.Tz, node.x, node.z, node.radius)
+				hit = shootHits(msg.X, msg.Z, *msg.Tx, *msg.Tz, nx, nz, node.radius)
 			}
 		}
 		if !hit {
@@ -239,7 +260,8 @@ func (s *Session) handleInput(sender string, msg incomingMessage) {
 		return
 	}
 	if pos, known := s.positions[sender]; known {
-		if math.Hypot(pos.x-node.x, pos.z-node.z) > interactRange+node.radius {
+		nx, nz := s.worldXZ(node)
+		if math.Hypot(pos.x-nx, pos.z-nz) > interactRange+node.radius {
 			return
 		}
 	}

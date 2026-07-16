@@ -189,6 +189,24 @@ func TestCounterInteractAndSnapshot(t *testing.T) {
 	}
 }
 
+func TestWorldXZ(t *testing.T) {
+	s := &Session{nodes: map[string]*nodeState{
+		"root":  {x: 10, z: -5},
+		"child": {parent: "root", x: 1, z: 2},
+		"grand": {parent: "child", x: 0.5, z: -0.5},
+		"loopA": {parent: "loopB", x: 1, z: 1},
+		"loopB": {parent: "loopA", x: 1, z: 1},
+	}}
+	if x, z := s.worldXZ(s.nodes["root"]); x != 10 || z != -5 {
+		t.Errorf("root = (%v, %v)", x, z)
+	}
+	if x, z := s.worldXZ(s.nodes["grand"]); x != 11.5 || z != -3.5 {
+		t.Errorf("grand = (%v, %v), want (11.5, -3.5)", x, z)
+	}
+	// 循環参照でも無限ループしない(depth上限で打ち切り)
+	s.worldXZ(s.nodes["loopA"])
+}
+
 func TestBrokenScriptIsSkipped(t *testing.T) {
 	// 存在しないwasm URL → そのスクリプトだけスキップされ、セッションは生きる
 	def, err := world.Parse([]byte(`{

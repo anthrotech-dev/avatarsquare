@@ -38,6 +38,27 @@ describe('parseWorld', () => {
     expect(world.scene.map((n) => n.id)).toEqual(['a', 'c'])
     expect(world.scene[1].someAttr).toBe(1)
   })
+
+  it('childrenをネストのまま保持し、idの一意性はツリー全体で見る', () => {
+    const world = parseWorld({
+      id: 'test',
+      size: 20,
+      scene: [
+        {
+          id: 'entity',
+          kind: 'group',
+          children: [
+            { id: 'visual', kind: 'sprite' },
+            { id: 'entity', kind: 'sprite' }, // ツリー内の重複はスキップ
+            { kind: 'sprite' }, // id欠落もスキップ
+          ],
+        },
+        { id: 'visual', kind: 'sprite' }, // 子と重複するトップレベルもスキップ
+      ],
+    })
+    expect(world.scene.map((n) => n.id)).toEqual(['entity'])
+    expect(world.scene[0].children?.map((n) => n.id)).toEqual(['visual'])
+  })
 })
 
 describe('getObstacles / hitsObstacle', () => {
@@ -80,6 +101,27 @@ describe('getObstacles / hitsObstacle', () => {
     const obstacles = getObstacles(world, 0.5)
     expect(hitsObstacle(0, 2.3, obstacles)).toBe(true) // 円: r2+0.5
     expect(hitsObstacle(8.6, 0, obstacles)).toBe(true) // ポリゴン辺の外側0.5以内
+  })
+
+  it('子ノードの障害物は親相対座標をワールド座標に合算する', () => {
+    const nested = parseWorld({
+      id: 'test',
+      size: 20,
+      scene: [
+        {
+          id: 'entity',
+          kind: 'group',
+          x: 5,
+          z: -3,
+          collider: 0.5,
+          children: [{ id: 'child-col', kind: 'collider', shape: 'circle', x: 2, z: 1, r: 1 }],
+        },
+      ],
+    })
+    const obstacles = getObstacles(nested)
+    expect(hitsObstacle(5, -3, obstacles)).toBe(true) // 親自身の足元円
+    expect(hitsObstacle(7, -2, obstacles)).toBe(true) // 子circle: (5+2, -3+1)
+    expect(hitsObstacle(2, 1, obstacles)).toBe(false) // 子のローカル座標そのままの位置には無い
   })
 })
 

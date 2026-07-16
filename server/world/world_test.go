@@ -46,6 +46,49 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestParseNested(t *testing.T) {
+	nested := `{
+	  "id": "w",
+	  "scene": [
+	    {"id": "entity", "kind": "group", "x": -6, "z": -3, "targetable": true, "children": [
+	      {"id": "visual", "kind": "sprite", "w": 1.2},
+	      {"id": "hpbar", "kind": "bar", "y": 2.0},
+	      {"id": "entity", "kind": "sprite"},
+	      {"kind": "sprite"}
+	    ]},
+	    {"id": "dup", "kind": "group", "children": [{"id": "dup-child", "kind": "sprite"}]},
+	    {"id": "dup", "kind": "group", "children": [{"id": "dup-child2", "kind": "sprite"}]}
+	  ]
+	}`
+	def, err := Parse([]byte(nested), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Node{}
+	for _, n := range def.Scene {
+		got[n.ID] = n
+	}
+	// 重複id(entity, dup2つ目)とid欠落はsubtreeごとスキップされる
+	want := []string{"entity", "visual", "hpbar", "dup", "dup-child"}
+	if len(def.Scene) != len(want) {
+		t.Fatalf("scene nodes = %d (%v), want %d", len(def.Scene), def.Scene, len(want))
+	}
+	for _, id := range want {
+		if _, ok := got[id]; !ok {
+			t.Errorf("node %q missing", id)
+		}
+	}
+	if _, ok := got["dup-child2"]; ok {
+		t.Error("duplicate parent's children should be skipped")
+	}
+	if got["entity"].Parent != "" || !got["entity"].Targetable {
+		t.Errorf("entity = %+v", got["entity"])
+	}
+	if got["visual"].Parent != "entity" || got["hpbar"].Parent != "entity" {
+		t.Errorf("children parent = %q/%q, want entity", got["visual"].Parent, got["hpbar"].Parent)
+	}
+}
+
 func TestParseRejectsBadID(t *testing.T) {
 	if _, err := Parse([]byte(`{"id": "bad id!", "scene": []}`), ""); err == nil {
 		t.Error("expected error for invalid id")

@@ -22,17 +22,29 @@ export interface WorldSummary {
 /**
  * シーンノード。既知の共通属性以外もそのまま保持する
  * (kindごとの属性はレンダラーが解釈し、未知の属性・kindは無視する)。
+ * childrenでツリーにできる: 親=データを持つエンティティ、子=ビジュアル、が推奨規約。
+ * targetable/collider/hp等のエンティティ属性はツリーのルートノードに置く。
  */
 export interface SceneNode {
   id: string
   kind: string
+  /** 座標は親相対(トップレベルはワールド座標) */
   x?: number
   z?: number
   y?: number
   visible?: boolean
   interactable?: boolean
+  /** 選択(ターゲット)可能か */
+  targetable?: boolean
+  /** 表示名(ターゲットHUD等)。省略時はid */
+  name?: string
+  /** 公開HP。hpMaxと両方あればHUD等がゲージ表示する汎用規約 */
+  hp?: number
+  hpMax?: number
   /** 通行不可の足元半径(m)。省略時は通行可能な飾り */
   collider?: number
+  /** 子ノード。idはツリー全体でグローバル一意 */
+  children?: SceneNode[]
   [attr: string]: unknown
 }
 
@@ -70,17 +82,24 @@ export function parseWorld(json: unknown): WorldDef {
   const spawn = { x: num(spawnRaw.x) ?? 0, z: num(spawnRaw.z) ?? 0 }
   if (!Array.isArray(raw.scene)) throw new Error('sceneがありません')
 
+  // id重複・欠落はそのsubtreeごとスキップ(idはツリー全体で一意)
   const seen = new Set<string>()
-  const scene: SceneNode[] = []
-  for (const node of raw.scene) {
-    if (typeof node !== 'object' || node === null) continue
+  const parseNode = (node: unknown): SceneNode | null => {
+    if (typeof node !== 'object' || node === null) return null
     const n = node as Record<string, unknown>
     const nodeId = String(n.id ?? '')
     const kind = String(n.kind ?? '')
-    if (!nodeId || !kind || seen.has(nodeId)) continue
+    if (!nodeId || !kind || seen.has(nodeId)) return null
     seen.add(nodeId)
-    scene.push({ ...n, id: nodeId, kind })
+    const parsed: SceneNode = { ...n, id: nodeId, kind }
+    if (Array.isArray(n.children)) {
+      parsed.children = n.children.map(parseNode).filter((c): c is SceneNode => c !== null)
+    } else {
+      delete parsed.children
+    }
+    return parsed
   }
+  const scene = raw.scene.map(parseNode).filter((n): n is SceneNode => n !== null)
 
   const scripts = Array.isArray(raw.scripts)
     ? raw.scripts.filter((s): s is string => typeof s === 'string')
@@ -102,47 +121,44 @@ export function resolveWorldUrl(worldUrl: string, asset: string): string {
   return new URL(asset, new URL(worldUrl, location.href)).toString()
 }
 
-/** 通行不可領域。colliderノード(形状指定)と、collider属性(足元円)を持つノードから導出する */
+/**
+ * 通行不可領域。colliderノード(形状指定)と、collider属性(足元円)を持つノードから導出する。
+ * 子ノードの座標は親相対なので、親チェーンのオフセットを合算してワールド座標にする
+ */
 export function getObstacles(world: WorldDef, margin = 0): Obstacle[] {
   const obstacles: Obstacle[] = []
-  for (const node of world.scene) {
+  const visit = (node: SceneNode, ox: number, oz: number): void => {
+    const x = (num(node.x) ?? 0) + ox
+    const z = (num(node.z) ?? 0) + oz
     if (node.kind === 'collider') {
       const shape = String(node.shape ?? '')
       if (shape === 'circle') {
-        const x = num(node.x)
-        const z = num(node.z)
         const r = num(node.r)
-        if (x !== undefined && z !== undefined && r !== undefined) {
-          obstacles.push({ kind: 'circle', x, z, r: r + margin })
-        }
+        if (r !== undefined) obstacles.push({ kind: 'circle', x, z, r: r + margin })
       } else if (shape === 'rect') {
-        const x = num(node.x)
-        const z = num(node.z)
         const w = num(node.w)
         const d = num(node.d)
-        if (x !== undefined && z !== undefined && w !== undefined && d !== undefined) {
+        if (w !== undefined && d !== undefined) {
           obstacles.push({ kind: 'rect', x, z, w: w + margin * 2, d: d + margin * 2 })
         }
       } else if (shape === 'polygon' && Array.isArray(node.points)) {
         const points = (node.points as unknown[])
           .map((p): [number, number] | null => {
             if (!Array.isArray(p)) return null
-            const x = num(p[0])
-            const z = num(p[1])
-            return x !== undefined && z !== undefined ? [x, z] : null
+            const px = num(p[0])
+            const pz = num(p[1])
+            return px !== undefined && pz !== undefined ? [px + x, pz + z] : null
           })
           .filter((p): p is [number, number] => p !== null)
         if (points.length >= 3) obstacles.push({ kind: 'polygon', points, margin })
       }
-      continue
+    } else {
+      const r = num(node.collider)
+      if (r !== undefined && r > 0) obstacles.push({ kind: 'circle', x, z, r: r + margin })
     }
-    const r = num(node.collider)
-    const x = num(node.x)
-    const z = num(node.z)
-    if (r !== undefined && r > 0 && x !== undefined && z !== undefined) {
-      obstacles.push({ kind: 'circle', x, z, r: r + margin })
-    }
+    for (const child of node.children ?? []) visit(child, x, z)
   }
+  for (const node of world.scene) visit(node, 0, 0)
   return obstacles
 }
 

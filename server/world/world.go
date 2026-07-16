@@ -23,13 +23,16 @@ var idRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 // ワールドJSONの取得サイズ上限。信頼済みURLのみだが事故防止に絞る
 const maxWorldBytes = 4 << 20
 
-// Node はシーンノード。既知の共通属性以外はAttrsにそのまま残す
+// Node はシーンノード。既知の共通属性以外はAttrsにそのまま残す。
+// シーンはツリー(childrenでネスト可)だが、Defにはフラットに展開して持つ
 type Node struct {
 	ID           string
 	Kind         string
-	X, Z         float64
+	X, Z         float64 // 親相対座標(トップレベルはワールド座標)
 	Collider     float64 // 足元の通行不可半径(m)。当たり判定の既定半径にも使う
 	Interactable bool
+	Targetable   bool
+	Parent       string // 親ノードid。トップレベルは空
 	Attrs        map[string]any
 }
 
@@ -80,25 +83,50 @@ func Parse(raw []byte, sourceURL string) (*Def, error) {
 		def.Name = doc.ID
 	}
 	seen := map[string]bool{}
-	for _, n := range doc.Scene {
-		id, _ := n["id"].(string)
-		kind, _ := n["kind"].(string)
-		if id == "" || kind == "" || seen[id] {
-			continue
+	// childrenを深さ優先で辿ってフラットに展開する。id重複・欠落はそのsubtreeごとスキップ
+	var walk func(n map[string]any, parent string)
+	walk = func(n map[string]any, parent string) {
+		node, ok := ParseNodeMap(n, parent)
+		if !ok || seen[node.ID] {
+			return
 		}
-		seen[id] = true
-		interactable, _ := n["interactable"].(bool)
-		def.Scene = append(def.Scene, Node{
-			ID:           id,
-			Kind:         kind,
-			X:            num(n["x"]),
-			Z:            num(n["z"]),
-			Collider:     num(n["collider"]),
-			Interactable: interactable,
-			Attrs:        n,
-		})
+		seen[node.ID] = true
+		def.Scene = append(def.Scene, node)
+		if children, ok := n["children"].([]any); ok {
+			for _, c := range children {
+				if cm, ok := c.(map[string]any); ok {
+					walk(cm, node.ID)
+				}
+			}
+		}
+	}
+	for _, n := range doc.Scene {
+		walk(n, "")
 	}
 	return def, nil
+}
+
+// ParseNodeMap は1ノードぶんの既知属性を取り出す(子は辿らない)。
+// id/kind欠落はfalse。スクリプトのspawnでも単体ノードの解釈に使う
+func ParseNodeMap(n map[string]any, parent string) (Node, bool) {
+	id, _ := n["id"].(string)
+	kind, _ := n["kind"].(string)
+	if id == "" || kind == "" {
+		return Node{}, false
+	}
+	interactable, _ := n["interactable"].(bool)
+	targetable, _ := n["targetable"].(bool)
+	return Node{
+		ID:           id,
+		Kind:         kind,
+		X:            num(n["x"]),
+		Z:            num(n["z"]),
+		Collider:     num(n["collider"]),
+		Interactable: interactable,
+		Targetable:   targetable,
+		Parent:       parent,
+		Attrs:        n,
+	}, true
 }
 
 // ResolveURL はワールドJSONのURLを基準に相対URL(スクリプト等)を解決する

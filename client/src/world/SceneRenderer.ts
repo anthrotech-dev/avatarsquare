@@ -92,21 +92,43 @@ export class SceneRenderer {
   /** 地面メッシュ(移動先レイキャストの対象)。groundノードが無いワールドではnull */
   ground: THREE.Mesh | null = null
   private readonly views = new Map<string, NodeView>()
+  /** ノードid → 親ノードid(トップレベルはnull)。祖先解決・ワールド座標算出に使う */
+  private readonly parents = new Map<string, string | null>()
   private readonly disposables: Array<{ dispose(): void }> = []
 
   constructor(world: WorldDef, worldUrl: string) {
     for (const node of world.scene) {
-      const view = this.buildNode(node, world, worldUrl)
-      if (!view) continue
-      // 共通属性の初期反映(位置・向き・表示)
-      this.applyCommonAttrs(view, node)
-      // レイキャストからノードを特定できるように全子孫へidを付与する
-      view.object.traverse((obj) => {
-        obj.userData[NODE_ID_KEY] = node.id
-      })
-      this.group.add(view.object)
-      this.views.set(node.id, view)
+      const object = this.buildTree(node, null, world, worldUrl)
+      if (object) this.group.add(object)
     }
+  }
+
+  /**
+   * ノードとその子孫を構築する。子はTHREE.Groupのネストで親に相対配置される。
+   * ビュー化されないノード(collider等)の子孫は描画されない
+   */
+  private buildTree(
+    node: SceneNode,
+    parent: string | null,
+    world: WorldDef,
+    worldUrl: string,
+  ): THREE.Object3D | null {
+    const view = this.buildNode(node, world, worldUrl)
+    if (!view) return null
+    // 共通属性の初期反映(位置・向き・表示)
+    this.applyCommonAttrs(view, node)
+    // レイキャストからノードを特定できるようにidを付与する。
+    // 子ノードの構築より先にtraverseすること(子のidを親のidで潰さない)
+    view.object.traverse((obj) => {
+      obj.userData[NODE_ID_KEY] = node.id
+    })
+    this.views.set(node.id, view)
+    this.parents.set(node.id, parent)
+    for (const child of node.children ?? []) {
+      const childObject = this.buildTree(child, node.id, world, worldUrl)
+      if (childObject) view.object.add(childObject)
+    }
+    return view.object
   }
 
   /** ノードの現在の定義(初期値+適用済みパッチ)。インタラクト判定などに使う */
@@ -114,9 +136,42 @@ export class SceneRenderer {
     return this.views.get(id)?.def
   }
 
-  /** レイキャスト対象(interactable等の判定はヒット後にgetNodeで行う) */
+  /** ノードのワールドXZ座標(親チェーンの相対座標を合算)。未知のidはnull */
+  worldPosition(id: string): { x: number; z: number } | null {
+    if (!this.views.has(id)) return null
+    let x = 0
+    let z = 0
+    let current: string | null = id
+    for (let depth = 0; current !== null && depth < 16; depth++) {
+      const view = this.views.get(current)
+      if (!view) break
+      x += num(view.def.x, 0)
+      z += num(view.def.z, 0)
+      current = this.parents.get(current) ?? null
+    }
+    return { x, z }
+  }
+
+  /**
+   * ノード自身から親方向へ辿り、attrがtrueの最近傍ノードidを返す。
+   * レイキャストは子(ビジュアル)に当たるため、エンティティルートへの解決に使う
+   */
+  findAncestorWith(id: string, attr: 'targetable' | 'interactable'): string | null {
+    let current: string | null = id
+    for (let depth = 0; current !== null && depth < 16; depth++) {
+      const view = this.views.get(current)
+      if (!view) return null
+      if (view.def[attr] === true) return current
+      current = this.parents.get(current) ?? null
+    }
+    return null
+  }
+
+  /** レイキャスト対象(トップレベルのみ。子孫はintersectObjectsのrecursiveで拾う) */
   raycastTargets(): THREE.Object3D[] {
-    return [...this.views.values()].filter((v) => v.def.kind !== 'ground').map((v) => v.object)
+    return [...this.views.entries()]
+      .filter(([id, v]) => v.def.kind !== 'ground' && this.parents.get(id) === null)
+      .map(([, v]) => v.object)
   }
 
   /** サーバーからの属性パッチを反映する(サーバー権威。値の意味は解釈しない) */
@@ -142,6 +197,7 @@ export class SceneRenderer {
     for (const view of this.views.values()) view.dispose()
     for (const d of this.disposables) d.dispose()
     this.views.clear()
+    this.parents.clear()
     this.group.removeFromParent()
   }
 
@@ -152,6 +208,9 @@ export class SceneRenderer {
 
   private buildNode(node: SceneNode, world: WorldDef, worldUrl: string): NodeView | null {
     switch (node.kind) {
+      case 'group':
+        // 空のコンテナ(div相当)。エンティティのデータ属性の置き場+子の座標基準
+        return { def: node, object: new THREE.Group(), applyAttrs: () => {}, dispose: () => {} }
       case 'ground':
         return this.buildGround(node, world, worldUrl)
       case 'sprite':
