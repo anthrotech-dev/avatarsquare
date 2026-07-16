@@ -164,4 +164,41 @@ describe('発音モードコマンド', () => {
     expect(api.setVoiceMode).not.toHaveBeenCalled()
     expect(errors[0]).toContain('使い方')
   })
+
+  it('/world は一覧を表示し、現在地に▶をつける', async () => {
+    const { ctx, printed } = makeTestContext({
+      getWorlds: vi.fn(() => [
+        { id: 'square', name: 'はじまりの広場' },
+        { id: 'forest', name: '森' },
+      ]),
+      getCurrentWorld: vi.fn(() => ({ id: 'square', name: 'はじまりの広場' })),
+    })
+    await makeRegistry().execute('/world', ctx)
+    expect(printed[0]).toBe('▶ square: はじまりの広場')
+    expect(printed[1]).toBe('forest: 森')
+  })
+
+  it('/world <id> は切替APIを呼び、現在地なら呼ばない', async () => {
+    const { ctx, api } = makeTestContext({
+      getCurrentWorld: vi.fn(() => ({ id: 'square', name: '広場' })),
+    })
+    await makeRegistry().execute('/world forest', ctx)
+    expect(api.switchWorld).toHaveBeenCalledWith('forest')
+
+    const same = makeTestContext({
+      getCurrentWorld: vi.fn(() => ({ id: 'square', name: '広場' })),
+    })
+    await makeRegistry().execute('/world square', same.ctx)
+    expect(same.api.switchWorld).not.toHaveBeenCalled()
+  })
+
+  it('/world の切替失敗はエラー表示する', async () => {
+    const { ctx, errors } = makeTestContext({
+      switchWorld: vi.fn(async () => {
+        throw new Error('404 Not Found')
+      }),
+    })
+    await makeRegistry().execute('/world nope', ctx)
+    expect(errors[0]).toContain('404')
+  })
 })

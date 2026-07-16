@@ -49,6 +49,12 @@ export interface GameCommandAPI {
   setVoiceMode(mode: 'normal' | 'broadcast' | 'whisper', radius?: number): void
   /** 現在の発音モード(/broadcast・/whisperのトグル判定用) */
   getVoiceMode(): 'normal' | 'broadcast' | 'whisper'
+  /** サーバーが提供するワールド一覧(未取得・サーバー未対応なら空) */
+  getWorlds(): Array<{ id: string; name: string }>
+  /** 現在いるワールド(未ロードならnull) */
+  getCurrentWorld(): { id: string; name: string } | null
+  /** 別ワールドへ移動する。取得失敗はthrow(コマンド側で表示) */
+  switchWorld(id: string): Promise<void>
   /** チャット入力欄にフォーカスする */
   focusChat(): void
   /** VRMファイル選択ダイアログを開く */

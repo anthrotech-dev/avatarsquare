@@ -25,6 +25,7 @@ import { saveMicDeviceId } from '../state/voice'
 import { emoteUrl } from '../ui/hud/emotes'
 import { SceneRenderer } from '../world/SceneRenderer'
 import { buildNavGrid, parseWorld, type WorldDef } from '../world/WorldDef'
+import { fetchWorld, fetchWorlds } from '../world/worldApi'
 import { type ActionDef, BUILTIN_ACTIONS } from './actions'
 import { EffectSystem } from './EffectSystem'
 import { registerBuiltinEffects } from './effects'
@@ -71,6 +72,8 @@ export class Game {
   private sceneRenderer: SceneRenderer | null = null
   private navGrid: NavGrid | null = null
   private world: WorldDef | null = null
+  /** ?room=での入室先の明示指定。/worldでの切替後は新ワールドを優先するため破棄する */
+  private roomOverride = new URLSearchParams(location.search).get('room')
   private readonly markers: ClickMarker[] = []
   private readonly resizeObserver: ResizeObserver
   private zoom = ZOOM_DEFAULT
@@ -186,9 +189,9 @@ export class Game {
     const { setWorldLoading } = useAppStore.getState()
     setWorldLoading('ワールドを読み込み中...')
     try {
-      const world = await this.fetchWorld(LOCAL_WORLD_URL)
+      const source = (await this.fetchServerWorld()) ?? (await this.fetchLocalWorld())
       if (this.disposed) return
-      this.applyWorld(world, LOCAL_WORLD_URL)
+      this.applyWorld(source.world, source.url)
       setWorldLoading(null)
     } catch (err) {
       // マップが無いと何もできないので、オーバーレイにエラーを出したまま止める
@@ -200,10 +203,45 @@ export class Game {
     void this.connectNet()
   }
 
-  private async fetchWorld(url: string): Promise<WorldDef> {
-    const res = await fetch(url)
+  /**
+   * サーバー(/worlds)からワールドを取得する。?world=で指定があればそれを、
+   * なければ一覧の先頭を使う。サーバー未対応・オフラインならnull(ローカルへフォールバック)
+   */
+  private async fetchServerWorld(): Promise<{ world: WorldDef; url: string } | null> {
+    try {
+      const worlds = await fetchWorlds()
+      if (worlds.length === 0) return null
+      useAppStore.getState().setWorlds(worlds)
+      const requested = new URLSearchParams(location.search).get('world')
+      const id = worlds.some((w) => w.id === requested) && requested ? requested : worlds[0].id
+      return await fetchWorld(id)
+    } catch {
+      return null
+    }
+  }
+
+  /** 自サイトのpublicに同梱しているワールド(サーバー未設定でも動くフォールバック) */
+  private async fetchLocalWorld(): Promise<{ world: WorldDef; url: string }> {
+    const res = await fetch(LOCAL_WORLD_URL)
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-    return parseWorld(await res.json())
+    return { world: parseWorld(await res.json()), url: LOCAL_WORLD_URL }
+  }
+
+  /**
+   * 別ワールドへ移動する。取得に失敗した場合は現在のワールドに留まる。
+   * 成功したらロード画面を挟んで切断→シーン差し替え→再接続する
+   */
+  async switchWorld(id: string): Promise<void> {
+    const { setWorldLoading } = useAppStore.getState()
+    const source = await fetchWorld(id) // 失敗はthrow(コマンド側で表示)
+    if (this.disposed) return
+    setWorldLoading(`「${source.world.name}」へ移動中...`)
+    this.roomOverride = null
+    try {
+      await this.rejoinSession(() => this.applyWorld(source.world, source.url))
+    } finally {
+      if (!this.disposed) setWorldLoading(null)
+    }
   }
 
   /**
@@ -240,8 +278,11 @@ export class Game {
 
   /** エンドポイント変更時などに接続を張り直す。VCに参加中なら再参加する */
   async reconnect(): Promise<void> {
-    const wasVoiceOn = this.net.voice?.enabled ?? false
-    this.net.disconnect()
+    await this.rejoinSession()
+  }
+
+  /** リモート由来のセッション状態を全て消す(再接続・ワールド切替の共通処理) */
+  private clearSessionState(): void {
     this.remotes.clear()
     this.speakingIds.clear()
     this.peerVoiceModes.clear()
@@ -251,6 +292,17 @@ export class Game {
     useAppStore.getState().clearPlayers()
     useAppStore.getState().clearVoicePeers()
     this.syncSelfVoiceUI()
+  }
+
+  /**
+   * 切断→状態クリア→(必要ならシーン差し替え)→再接続。
+   * 発音モードとVC参加はセッション状態として引き継ぐ
+   */
+  private async rejoinSession(beforeConnect?: () => void): Promise<void> {
+    const wasVoiceOn = this.net.voice?.enabled ?? false
+    this.net.disconnect()
+    this.clearSessionState()
+    beforeConnect?.()
     await this.connectNet()
     // 発音モードはセッション状態として引き継ぐ(vmodeは接続後に改めて配る)
     if (this.voiceMode !== 'normal') this.net.sendReliable(this.voiceModeMessage())
@@ -361,8 +413,7 @@ export class Game {
     this.identity = identity
     setSelfId(identity)
     // ?room=xxx で入室先を切り替えられる(既定は現在のワールドid)
-    const roomName =
-      new URLSearchParams(location.search).get('room') ?? this.world?.id ?? FALLBACK_ROOM
+    const roomName = this.roomOverride ?? this.world?.id ?? FALLBACK_ROOM
     setNetStatus('接続中...')
     // 接続ごとに新しいクライアントを作り、再接続と競合した古い試行は破棄する
     const net = new NetClient()
@@ -596,6 +647,9 @@ export class Game {
     },
     setVoiceMode: (mode, radius) => this.applySelfVoiceMode(mode, radius),
     getVoiceMode: () => this.voiceMode,
+    getWorlds: () => useAppStore.getState().worlds,
+    getCurrentWorld: () => useAppStore.getState().world,
+    switchWorld: (id) => this.switchWorld(id),
     focusChat: () => useAppStore.getState().requestChatFocus(),
     openVrmPicker: () => useAppStore.getState().requestVrmPicker(),
     clearVrmCache: () => {

@@ -129,10 +129,13 @@ func main() {
 			type entry struct {
 				ID   string `json:"id"`
 				Name string `json:"name"`
+				// URL はワールドJSONの取得元。クライアントはこれを基準に
+				// テクスチャ等の相対URLを解決する(JSON本体はプロキシ配信のため)
+				URL string `json:"url"`
 			}
 			list := []entry{}
 			for _, def := range worlds.All() {
-				list = append(list, entry{ID: def.ID, Name: def.Name})
+				list = append(list, entry{ID: def.ID, Name: def.Name, URL: def.SourceURL})
 			}
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(list); err != nil {
@@ -147,6 +150,9 @@ func main() {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
+			// 相対アセット解決の基準(プロキシ配信でベースURLが変わるため)
+			w.Header().Set("X-World-Source", def.SourceURL)
+			w.Header().Set("Access-Control-Expose-Headers", "X-World-Source")
 			if _, err := w.Write(def.Raw); err != nil {
 				log.Printf("failed to write response: %v", err)
 			}

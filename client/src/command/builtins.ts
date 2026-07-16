@@ -238,6 +238,37 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       },
     },
     {
+      name: 'world',
+      description: 'ワールド一覧の表示・別ワールドへの移動',
+      usage: '/world [id]',
+      async execute(ctx, args) {
+        if (!args[0]) {
+          const worlds = ctx.api.getWorlds()
+          if (worlds.length === 0) {
+            ctx.out.print('ワールド一覧を取得できません(サーバー未対応またはオフライン)')
+            return
+          }
+          const current = ctx.api.getCurrentWorld()
+          for (const w of worlds) {
+            ctx.out.print(`${w.id === current?.id ? '▶ ' : ''}${w.id}: ${w.name}`)
+          }
+          ctx.out.print('/world <id> で移動できます')
+          return
+        }
+        if (args[0] === ctx.api.getCurrentWorld()?.id) {
+          ctx.out.print('すでにそのワールドにいます')
+          return
+        }
+        try {
+          await ctx.api.switchWorld(args[0])
+        } catch (err) {
+          ctx.out.error(
+            `ワールドへ移動できません: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+      },
+    },
+    {
       name: 'macro',
       aliases: ['m'],
       description: 'マクロを実行する',
