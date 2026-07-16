@@ -11,6 +11,11 @@ function makeRegistry(): CommandRegistry {
   return registry
 }
 
+/** /attack(対象指定スキル)が発動するための射程内ターゲット */
+function inRangeTarget() {
+  return { id: 'scarecrow', name: 'かかし', x: 0, z: 1, radius: 0.5 }
+}
+
 describe('CommandRegistry', () => {
   // attack/shootのCD状態はモジュールグローバルなので、テスト間で持ち越さない
   beforeEach(() => {
@@ -26,9 +31,9 @@ describe('CommandRegistry', () => {
 
   it('aliasで解決できる', async () => {
     const registry = makeRegistry()
-    const { ctx, api } = makeTestContext()
+    const { ctx, api } = makeTestContext({ acquireTarget: vi.fn(inRangeTarget) })
     await registry.execute('/slash', ctx)
-    expect(api.performAction).toHaveBeenCalledWith('slash')
+    expect(api.performAction).toHaveBeenCalledWith('slash', { x: 0, z: 1 }, 'scarecrow')
     await registry.execute('/e VRMA_02', ctx)
     expect(api.playEmote).toHaveBeenCalledWith('VRMA_02')
   })
@@ -126,7 +131,7 @@ describe('CommandRegistry', () => {
     vi.useFakeTimers({ toFake: ['performance'] })
     try {
       const registry = makeRegistry()
-      const { ctx, api, errors } = makeTestContext()
+      const { ctx, api, errors } = makeTestContext({ acquireTarget: vi.fn(inRangeTarget) })
       await registry.execute('/attack', ctx)
       await registry.execute('/attack', ctx)
       expect(api.performAction).toHaveBeenCalledTimes(1)
@@ -142,10 +147,40 @@ describe('CommandRegistry', () => {
 
   it('クールダウンはaliasと共有される', async () => {
     const registry = makeRegistry()
-    const { ctx, api } = makeTestContext()
+    const { ctx, api } = makeTestContext({ acquireTarget: vi.fn(inRangeTarget) })
     await registry.execute('/attack', ctx)
     await registry.execute('/slash', ctx)
     expect(api.performAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('発動不成立(falseを返す)ならクールダウンは返金される', async () => {
+    const registry = makeRegistry()
+    // 対象なし → 不成立 → CD返金 → 対象ありの再実行がすぐ通る
+    const { ctx: noTarget, errors } = makeTestContext()
+    await registry.execute('/attack', noTarget)
+    expect(errors).toHaveLength(1)
+    const { ctx, api } = makeTestContext({ acquireTarget: vi.fn(inRangeTarget) })
+    await registry.execute('/attack', ctx)
+    expect(api.performAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('実行中にthrowしてもクールダウンは返金される', async () => {
+    const registry = new CommandRegistry()
+    let calls = 0
+    registry.register({
+      name: 'boom',
+      description: '',
+      cooldownMs: 3000,
+      execute() {
+        calls++
+        if (calls === 1) throw new Error('失敗')
+      },
+    })
+    const { ctx, errors } = makeTestContext()
+    await registry.execute('/boom', ctx)
+    expect(errors).toHaveLength(1)
+    await registry.execute('/boom', ctx)
+    expect(calls).toBe(2) // CDに阻まれず再実行できる
   })
 
   it('/help はコマンド一覧を出力する', async () => {

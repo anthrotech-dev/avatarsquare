@@ -33,6 +33,27 @@ func TestSlashHits(t *testing.T) {
 	}
 }
 
+func TestTargetedSlashHits(t *testing.T) {
+	tests := []struct {
+		name      string
+		ax, az    float64
+		nx, nz, r float64
+		want      bool
+	}{
+		{"射程内", 0, 0, 0, 2, 0.5, true},
+		{"射程外", 0, 0, 0, 3.5, 0.5, false},
+		{"半径ぶんで届く(距離-r<=2.2)", 0, 0, 0, 2.6, 0.5, true},
+		{"背後でも射程内なら当たる(角度不問)", 0, 0, 0, -2, 0.5, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := targetedSlashHits(tt.ax, tt.az, tt.nx, tt.nz, tt.r); got != tt.want {
+				t.Errorf("targetedSlashHits = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestShootHits(t *testing.T) {
 	// tx,tzは常に6m先に正規化されるため、手前の的は線分の途中で当たる必要がある
 	tests := []struct {

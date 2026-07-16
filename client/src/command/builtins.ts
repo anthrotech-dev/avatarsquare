@@ -7,6 +7,9 @@ import type { CommandContext, CommandDef } from './types'
 /** 射撃の射程。方向指定スキルなので飛距離は狙い先によらず一定 */
 const SHOOT_RANGE = 6
 
+/** 斬撃の射程(対象指定)。サーバーの検証(hit.goのslashRange)のミラー */
+const SLASH_RANGE = 2.2
+
 /** 攻撃スキル(斬撃・射撃)のクールダウン */
 const SKILL_COOLDOWN_MS = 3000
 
@@ -112,10 +115,33 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
     {
       name: 'attack',
       aliases: ['slash'],
-      description: '目の前を斬りつける',
+      description: '選択中の対象を斬りつける(未選択ならカーソル直下を自動選択)',
       cooldownMs: SKILL_COOLDOWN_MS,
       execute(ctx) {
-        ctx.api.performAction('slash')
+        // 対象指定スキル: 対象がいない・射程外なら発動しない(falseでCD返金)
+        const target = ctx.api.acquireTarget()
+        if (!target) {
+          ctx.out.error('対象を選択してください')
+          return false
+        }
+        const { x, z } = ctx.api.getPosition()
+        if (Math.hypot(target.x - x, target.z - z) - target.radius > SLASH_RANGE) {
+          ctx.out.error(`「${target.name}」は射程外です。近づいてください`)
+          return false
+        }
+        ctx.api.performAction('slash', { x: target.x, z: target.z }, target.id)
+      },
+    },
+    {
+      name: 'target',
+      description: '対象を選択/解除する(対象可能ノードのクリックでも選択できる)',
+      usage: '/target <ノードid|clear>',
+      execute(ctx, args) {
+        if (!args[0]) {
+          ctx.out.error('使い方: /target <ノードid|clear>')
+          return
+        }
+        ctx.api.selectTarget(args[0] === 'clear' ? null : args[0])
       },
     },
     {

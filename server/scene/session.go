@@ -26,11 +26,12 @@ const maxSceneNodes = 4096
 // nodeState はノードの現在値のうちサーバーが解釈する分。
 // 初期値はワールドJSON、以後はスクリプトのpatchで更新される
 type nodeState struct {
-	def     *world.Node
-	parent  string  // 親ノードid(x,zは親相対)。トップレベルは空
-	x, z    float64 // 親相対座標
-	radius  float64 // hit判定・通行の半径
-	visible bool
+	def        *world.Node
+	parent     string  // 親ノードid(x,zは親相対)。トップレベルは空
+	x, z       float64 // 親相対座標
+	radius     float64 // hit判定・通行の半径
+	visible    bool
+	targetable bool
 	// spawnRoot は動的スポーン由来のノードのルートid。静的(初期シーン)は空
 	spawnRoot string
 }
@@ -85,7 +86,7 @@ func NewSession(def *world.Def, runtime *Runtime, broadcast func(data []byte, to
 		}
 		s.nodes[node.ID] = &nodeState{
 			def: node, parent: node.Parent,
-			x: node.X, z: node.Z, radius: radius, visible: true,
+			x: node.X, z: node.Z, radius: radius, visible: true, targetable: node.Targetable,
 		}
 		s.childrenOf[node.Parent] = append(s.childrenOf[node.Parent], node.ID)
 	}
@@ -237,6 +238,11 @@ func (s *Session) worldXZ(node *nodeState) (float64, float64) {
 // handleAct は攻撃(act)のジオメトリ判定。hitリスナーのあるノードに当たれば
 // スクリプトへhitイベントを配送し、全員へgevent(演出トリガー)を配る
 func (s *Session) handleAct(sender string, msg incomingMessage) {
+	// 対象指定の斬撃は対象ノードだけを検証する(tidなしは従来の扇形判定)
+	if msg.Name == "slash" && msg.Tid != "" {
+		s.handleTargetedSlash(sender, msg)
+		return
+	}
 	for nodeID, byEvent := range s.listeners {
 		scripts := byEvent["hit"]
 		if len(scripts) == 0 {
@@ -265,6 +271,30 @@ func (s *Session) handleAct(sender string, msg incomingMessage) {
 		event := mustJSON(map[string]any{"node": nodeID, "type": "hit", "kind": msg.Name, "by": sender})
 		s.dispatch(scripts, event)
 	}
+}
+
+// handleTargetedSlash は対象指定の斬撃。対象がtargetableかつ可視で、
+// 送信座標から射程内(角度不問)であることを検証して命中を確定する。
+// 位置はactの既存規約どおり送信座標を信用する(位置詐称は許容: 厳密さより自由)
+func (s *Session) handleTargetedSlash(sender string, msg incomingMessage) {
+	node, ok := s.nodes[msg.Tid]
+	if !ok || !node.targetable || !node.visible {
+		return
+	}
+	nx, nz := s.worldXZ(node)
+	if !targetedSlashHits(msg.X, msg.Z, nx, nz, node.radius) {
+		return
+	}
+	// hitリスナーが無くても命中フィードバック(gevent)は配る(対象が明示されているため)
+	s.broadcast(mustJSON(eventMessage{
+		T: "gevent", ID: msg.Tid, Name: "hit", Data: map[string]any{"kind": msg.Name},
+	}), nil)
+	scripts := s.listeners[msg.Tid]["hit"]
+	if len(scripts) == 0 {
+		return
+	}
+	event := mustJSON(map[string]any{"node": msg.Tid, "type": "hit", "kind": msg.Name, "by": sender})
+	s.dispatch(scripts, event)
 }
 
 // handleInput はクリックインタラクト等の入力。interactableかつ購読ノードのみ、
@@ -330,6 +360,10 @@ func (s *Session) applyPatch(id string, attrs map[string]any) {
 		case "visible":
 			if b, ok := value.(bool); ok {
 				node.visible = b
+			}
+		case "targetable":
+			if b, ok := value.(bool); ok {
+				node.targetable = b
 			}
 		}
 	}
@@ -397,7 +431,8 @@ func (s *Session) applySpawn(parentID string, node map[string]any) {
 		}
 		s.nodes[n.ID] = &nodeState{
 			def: n, parent: n.Parent,
-			x: n.X, z: n.Z, radius: radius, visible: true, spawnRoot: rootID,
+			x: n.X, z: n.Z, radius: radius, visible: true, targetable: n.Targetable,
+			spawnRoot: rootID,
 		}
 		s.childrenOf[n.Parent] = append(s.childrenOf[n.Parent], n.ID)
 	}

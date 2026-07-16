@@ -71,6 +71,8 @@ describe('マクロの実行', () => {
         return true
       },
       performAction: (name) => order.push(name),
+      // /attackは対象指定スキルになったため、射程内の対象を返す
+      acquireTarget: () => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 1, radius: 0.5 }),
     })
     await registry.execute('/macro combo', ctx)
     expect(order).toEqual(['jump', 'slash'])
@@ -87,14 +89,16 @@ describe('マクロの実行', () => {
   it('/wait を挟んだシーケンスが時間どおり進む', async () => {
     const { store, registry } = makeSetup()
     store.save({ name: 'slow', lines: ['/jump', '/wait 2', '/attack'] })
-    const { ctx, api } = makeTestContext()
+    const { ctx, api } = makeTestContext({
+      acquireTarget: () => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 1, radius: 0.5 }),
+    })
     const done = registry.execute('/slow', ctx)
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.jump).toHaveBeenCalled()
     expect(api.performAction).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1100)
     await done
-    expect(api.performAction).toHaveBeenCalledWith('slash')
+    expect(api.performAction).toHaveBeenCalledWith('slash', { x: 0, z: 1 }, 'scarecrow')
   })
 
   it('自己再帰マクロはdepth制限で止まる', async () => {

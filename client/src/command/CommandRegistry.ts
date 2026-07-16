@@ -1,4 +1,4 @@
-import { tryStartCooldown } from './cooldowns'
+import { cancelCooldown, tryStartCooldown } from './cooldowns'
 import { parseCommandLine } from './parse'
 import type { CommandContext, CommandDef } from './types'
 
@@ -40,13 +40,18 @@ export class CommandRegistry {
       ctx.out.error(`未知のコマンド: /${parsed.name}`)
       return
     }
-    // CD中は黙って無視する(フィードバックはホットバーのタイマー表示が担う)
-    if (def.cooldownMs && !tryStartCooldown([def.name, ...(def.aliases ?? [])], def.cooldownMs)) {
+    // CD中は黙って無視する(フィードバックはホットバーのタイマー表示が担う)。
+    // CDは実行前に開始する(連打・非同期実行中の二重発火を防ぐ)
+    const cooldownNames = [def.name, ...(def.aliases ?? [])]
+    if (def.cooldownMs && !tryStartCooldown(cooldownNames, def.cooldownMs)) {
       return
     }
     try {
-      await def.execute(ctx, parsed.args, parsed.rest)
+      const result = await def.execute(ctx, parsed.args, parsed.rest)
+      // false = 発動不成立(対象なし・射程外など)。CDを返金する
+      if (result === false && def.cooldownMs) cancelCooldown(cooldownNames)
     } catch (err) {
+      if (def.cooldownMs) cancelCooldown(cooldownNames)
       ctx.out.error(`/${parsed.name} 失敗: ${err instanceof Error ? err.message : String(err)}`)
     }
   }

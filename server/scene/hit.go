@@ -37,6 +37,13 @@ func slashHits(ax, az, yaw, nx, nz, r float64) bool {
 	return angle <= slashHalfAngleDeg*math.Pi/180
 }
 
+// targetedSlashHits は対象指定の斬撃が中心(nx,nz)半径rの的に届くか。
+// 対象を選択して発動するスキルなので角度は不問(発動時に対象の方を向く)、
+// 距離だけを通常の斬撃と同じリーチで検証する
+func targetedSlashHits(ax, az, nx, nz, r float64) bool {
+	return math.Hypot(nx-ax, nz-az)-r <= slashRange
+}
+
 // shootHits は(ax,az)から(tx,tz)への射線が中心(nx,nz)半径rの的を通るか。
 // クライアントのtx,tzは常に射程いっぱい(6m先)に正規化されるため、
 // 着弾点ではなく線分との距離で判定する(手前の的に当てるため)。

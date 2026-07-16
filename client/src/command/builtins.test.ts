@@ -58,6 +58,60 @@ describe('/shoot(方向指定・射程一定)', () => {
   })
 })
 
+describe('/attack(対象指定スキル)と/target', () => {
+  it('対象が未選択(取得できない)なら発動せずCDも消費しない', async () => {
+    const registry = makeRegistry()
+    const { ctx, api, errors } = makeTestContext({ acquireTarget: vi.fn(() => null) })
+    await registry.execute('/attack', ctx)
+    expect(api.performAction).not.toHaveBeenCalled()
+    expect(errors[0]).toContain('対象を選択')
+    // CD返金の確認: 対象が取れれば直後の再実行が通る
+    const { ctx: ctx2, api: api2 } = makeTestContext({
+      acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 1, radius: 0.5 })),
+    })
+    await registry.execute('/attack', ctx2)
+    expect(api2.performAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('射程外(距離-半径 > 2.2m)なら発動しない', async () => {
+    const { ctx, api, errors } = makeTestContext({
+      acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 3, radius: 0.5 })),
+    })
+    await makeRegistry().execute('/attack', ctx)
+    expect(api.performAction).not.toHaveBeenCalled()
+    expect(errors[0]).toContain('射程外')
+  })
+
+  it('半径ぶんで射程に届けば発動し、対象座標とtidを渡す', async () => {
+    const { ctx, api } = makeTestContext({
+      acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 2.5, radius: 0.5 })),
+    })
+    await makeRegistry().execute('/attack', ctx)
+    expect(api.performAction).toHaveBeenCalledWith('slash', { x: 0, z: 2.5 }, 'scarecrow')
+  })
+
+  it('/target <id> は選択、/target clear は解除する', async () => {
+    const registry = makeRegistry()
+    const { ctx, api, errors } = makeTestContext()
+    await registry.execute('/target scarecrow', ctx)
+    expect(api.selectTarget).toHaveBeenCalledWith('scarecrow')
+    await registry.execute('/target clear', ctx)
+    expect(api.selectTarget).toHaveBeenCalledWith(null)
+    await registry.execute('/target', ctx)
+    expect(errors[0]).toContain('使い方')
+  })
+
+  it('/target の選択失敗(throw)はエラー表示になる', async () => {
+    const { ctx, errors } = makeTestContext({
+      selectTarget: vi.fn(() => {
+        throw new Error('「tree-1」は対象にできません')
+      }),
+    })
+    await makeRegistry().execute('/target tree-1', ctx)
+    expect(errors[0]).toContain('対象にできません')
+  })
+})
+
 describe('ボイスチャットコマンド', () => {
   it('/vc on|off|toggle がAPIへ渡る', async () => {
     for (const mode of ['on', 'off', 'toggle'] as const) {

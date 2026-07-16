@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getCooldown, resetCooldowns, subscribeCooldowns, tryStartCooldown } from './cooldowns'
+import {
+  cancelCooldown,
+  getCooldown,
+  resetCooldowns,
+  subscribeCooldowns,
+  tryStartCooldown,
+} from './cooldowns'
 
 describe('cooldowns', () => {
   beforeEach(() => {
@@ -39,6 +45,23 @@ describe('cooldowns', () => {
   it('コマンドごとに独立している', () => {
     tryStartCooldown(['attack'], 3000)
     expect(tryStartCooldown(['shoot'], 3000)).toBe(true)
+  })
+
+  it('cancelCooldownで返金され、即座に再開始できる(alias込み)', () => {
+    tryStartCooldown(['attack', 'slash'], 3000)
+    cancelCooldown(['attack', 'slash'])
+    expect(getCooldown('attack')).toBeNull()
+    expect(getCooldown('slash')).toBeNull()
+    expect(tryStartCooldown(['attack', 'slash'], 3000)).toBe(true)
+  })
+
+  it('cancelCooldownは購読者へ通知する(ホットバーのCD表示解除)', () => {
+    tryStartCooldown(['attack'], 3000)
+    const fn = vi.fn()
+    const unsubscribe = subscribeCooldowns(fn)
+    cancelCooldown(['attack'])
+    expect(fn).toHaveBeenCalledTimes(1)
+    unsubscribe()
   })
 
   it('開始時に購読者へ通知する。unsubscribe後は通知しない', () => {

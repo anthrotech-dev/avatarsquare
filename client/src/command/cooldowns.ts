@@ -28,6 +28,15 @@ export function tryStartCooldown(names: string[], durationMs: number): boolean {
   return true
 }
 
+/**
+ * クールダウンのキャンセル(返金)。発動条件を満たさず不成立だったスキルが
+ * CDを消費しないために使う。開始と同じnames(canonical名+alias)を渡す
+ */
+export function cancelCooldown(names: string[]): void {
+  for (const name of names) active.delete(name)
+  for (const fn of listeners) fn()
+}
+
 /** 実行中のクールダウン。未登録・終了済みはnull */
 export function getCooldown(name: string): CooldownEntry | null {
   const entry = active.get(name)

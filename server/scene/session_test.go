@@ -118,6 +118,13 @@ func actMsg(name string, x, z, yaw float64, tx, tz *float64) []byte {
 	return data
 }
 
+func targetedActMsg(name string, x, z float64, tid string) []byte {
+	data, _ := json.Marshal(map[string]any{
+		"t": "act", "name": name, "x": x, "z": z, "yaw": 0, "tid": tid,
+	})
+	return data
+}
+
 func TestScarecrowHitAndRespawn(t *testing.T) {
 	session, ch := newTestSession(t)
 
@@ -196,6 +203,31 @@ func TestScarecrowHitAndRespawn(t *testing.T) {
 	}
 	if _, stale := patches["scarecrow"]; stale {
 		t.Error("despawn済みノードの累積patchはgsnapから消えるべき")
+	}
+}
+
+func TestTargetedSlash(t *testing.T) {
+	session, ch := newTestSession(t)
+
+	// 対象指定は角度不問: かかし(0,5)の奥側(0,6.5)から後ろ向き相当でも射程内なら当たる
+	session.HandleMessage("alice", targetedActMsg("slash", 0, 6.5, "scarecrow"))
+	waitFor(t, ch, "gevent hit (targeted)", func(r broadcastRec) bool {
+		return r.msg["t"] == "gevent" && r.msg["id"] == "scarecrow" && r.msg["name"] == "hit"
+	})
+	rec := waitFor(t, ch, "hp patch", func(r broadcastRec) bool { return isPatch(r, "scarecrow") })
+	if v := attrs(rec)["hp"].(float64); v != 20 {
+		t.Errorf("hp = %v, want 20", v)
+	}
+
+	// 射程外(距離4.5-r0.5 > 2.2)は不発。targetableでないノード指定も不発
+	session.HandleMessage("alice", targetedActMsg("slash", 0, 0.5, "scarecrow"))
+	session.HandleMessage("alice", targetedActMsg("slash", 3, 1, "counter-button"))
+	// 存在しないtidも不発。その後の正常な攻撃だけが通ることで上3つの不発を確認する
+	session.HandleMessage("alice", targetedActMsg("slash", 0, 4, "no-such-node"))
+	session.HandleMessage("alice", targetedActMsg("slash", 0, 4, "scarecrow"))
+	rec = waitFor(t, ch, "hp patch 2", func(r broadcastRec) bool { return isPatch(r, "scarecrow") })
+	if v := attrs(rec)["hp"].(float64); v != 10 {
+		t.Errorf("hp = %v, want 10 (不発のはずの攻撃が当たっている?)", v)
 	}
 }
 

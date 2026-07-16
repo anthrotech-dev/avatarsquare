@@ -37,9 +37,11 @@ export interface ActMessage {
   x: number
   z: number
   yaw: number
-  /** 対象地点(射撃など対象を取るアクションのみ) */
+  /** 対象地点(射撃など方向を取るアクションのみ) */
   tx?: number
   tz?: number
+  /** 対象ノードid(対象指定スキルのみ)。サーバーがtargetable/射程を検証する */
+  tid?: string
 }
 
 /**

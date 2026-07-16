@@ -11,7 +11,8 @@ export interface GameCommandAPI {
   stop(): void
   /** ジャンプする。空中ならfalse */
   jump(): boolean
-  performAction(name: string, target?: { x: number; z: number }): void
+  /** targetは向き合わせ・方向スキルの狙い先。tidは対象指定スキルの対象ノードid */
+  performAction(name: string, target?: { x: number; z: number }, tid?: string): void
   playEmote(id: string): Promise<void>
   setCameraFollow(mode: 'on' | 'off' | 'toggle'): void
   snapCamera(): void
@@ -60,6 +61,14 @@ export interface GameCommandAPI {
    * 対象がない・インタラクト不可・離れすぎはthrow(コマンド側で表示)
    */
   interact(id: string): void
+  /** 対象を選択する(null=解除)。targetableでないノードはthrow(コマンド側で表示) */
+  selectTarget(id: string | null): void
+  /**
+   * 対象指定スキル用の対象取得。選択済みかつ有効(存在+targetable+可視)なら
+   * それを、未選択ならカーソル直下のtargetableエンティティを自動選択して返す。
+   * どちらも無ければnull。座標はワールド座標、radiusは射程判定用の的の半径
+   */
+  acquireTarget(): { id: string; name: string; x: number; z: number; radius: number } | null
   /** チャット入力欄にフォーカスする */
   focusChat(): void
   /** VRMファイル選択ダイアログを開く */
@@ -91,6 +100,14 @@ export interface CommandDef {
   usage?: string
   /** 実行後この時間(ms)は再実行を無視する。CD中の実行は黙って捨てられる */
   cooldownMs?: number
-  /** restはコマンド名より後の生の残り文字列(チャット本文など改変したくない引数用) */
-  execute(ctx: CommandContext, args: string[], rest?: string): void | Promise<void>
+  /**
+   * restはコマンド名より後の生の残り文字列(チャット本文など改変したくない引数用)。
+   * falseを返すと「発動不成立」(対象なし・射程外など)としてクールダウンが返金される。
+   * void(undefined)を返す既存コマンドはCD消費のまま変わらない
+   */
+  execute(
+    ctx: CommandContext,
+    args: string[],
+    rest?: string,
+  ): undefined | boolean | Promise<undefined | boolean> | void | Promise<void>
 }

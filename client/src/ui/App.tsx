@@ -13,6 +13,7 @@ import { MainMenu, useEscMenu } from './hud/MainMenu'
 import { PlayersWindow } from './hud/PlayersWindow'
 import { SettingsWindow } from './hud/SettingsPanel'
 import { StatusPanel } from './hud/StatusPanel'
+import { TargetPanel } from './hud/TargetPanel'
 import { VoicePanel } from './hud/VoicePanel'
 import { VoiceWindow } from './hud/VoiceWindow'
 
@@ -82,6 +83,9 @@ export function App() {
     >
       <HudElement id="status" label="ステータス">
         <StatusPanel />
+      </HudElement>
+      <HudElement id="target" label="ターゲット">
+        <TargetPanel />
       </HudElement>
       <HudElement id="chat" label="チャット">
         <ChatWindow />

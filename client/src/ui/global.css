@@ -26,6 +26,7 @@ body,
 /* --- HUD共通 --- */
 
 .hud-status,
+.hud-target,
 .hud-chat,
 .hud-hotbar-slots,
 .hud-window {
@@ -65,6 +66,12 @@ body,
 .hud-anchor-vc {
   top: 12px;
   right: 12px;
+}
+
+.hud-anchor-target {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 /* 非表示要素(HUD編集モード中のみ描画される) */
@@ -123,6 +130,61 @@ body,
 .hud-status-message {
   color: #ffd479;
   font-size: 12px;
+}
+
+/* --- ターゲット(上部中央) --- */
+
+.hud-target {
+  min-width: 180px;
+  padding: 8px 14px;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+}
+
+.hud-target-down {
+  opacity: 0.55;
+}
+
+.hud-target-empty {
+  color: #a8b2c2;
+  font-size: 12px;
+}
+
+.hud-target-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hud-target-state {
+  margin-left: 6px;
+  color: #a8b2c2;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.hud-target-hpbar {
+  position: relative;
+  height: 14px;
+  margin-top: 6px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.hud-target-hpfill {
+  height: 100%;
+  border-radius: 7px;
+  transition: width 0.15s ease-out;
+}
+
+.hud-target-hptext {
+  position: absolute;
+  inset: 0;
+  font-size: 10px;
+  line-height: 14px;
+  color: #f2f5fa;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
 }
 
 /* --- チャット(左下) --- */

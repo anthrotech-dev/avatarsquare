@@ -23,6 +23,8 @@ type incomingMessage struct {
 	Name   string `json:"name"`
 	ID     string `json:"id"`
 	Action string `json:"action"`
+	// act: 対象指定スキルの対象ノードid
+	Tid string `json:"tid"`
 }
 
 type patchMessage struct {

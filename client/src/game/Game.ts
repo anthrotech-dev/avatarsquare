@@ -40,6 +40,7 @@ import { registerBuiltinEffects } from './effects'
 import { acquireFlatMaterial, releaseFlatMaterial } from './materialPool'
 import type { NavGrid } from './pathfinding'
 import { RemoteAvatars } from './RemoteAvatars'
+import { TargetRing } from './TargetRing'
 import { WhisperRings } from './WhisperRings'
 
 // 平行投影の固定アングル(LoL風の2Dルック)。仰角 約42°
@@ -82,6 +83,9 @@ export class Game {
   private sceneRenderer: SceneRenderer | null = null
   private navGrid: NavGrid | null = null
   private world: WorldDef | null = null
+  /** 選択中ターゲットのノードid(正はここ。HUDへはstoreへスナップショットを流す) */
+  private selectedTargetId: string | null = null
+  private readonly targetRing = new TargetRing(this.scene)
   /** ?room=での入室先の明示指定。/worldでの切替後は新ワールドを優先するため破棄する */
   private roomOverride = new URLSearchParams(location.search).get('room')
   private readonly markers: ClickMarker[] = []
@@ -260,6 +264,10 @@ export class Game {
    * 旧ワールドのGPUリソースはここで解放する。
    */
   private applyWorld(world: WorldDef, worldUrl: string): void {
+    // 選択ターゲットは旧ワールドのノードを指しているため解除する
+    this.selectedTargetId = null
+    this.targetRing.clear()
+    useAppStore.getState().setTarget(null)
     this.sceneRenderer?.dispose()
     this.world = world
     this.sceneRenderer = new SceneRenderer(world, worldUrl)
@@ -346,10 +354,12 @@ export class Game {
     switch (message.t) {
       case 'gpatch':
         renderer.applyPatch(message.id, message.attrs)
+        if (message.id === this.selectedTargetId) this.pushTargetToStore()
         break
       case 'gsnap':
         renderer.applySnapshot(message.patches, message.spawns, message.despawns)
         if (message.spawns?.length || message.despawns?.length) this.markNavGridDirty()
+        if (this.selectedTargetId) this.pushTargetToStore()
         break
       case 'gspawn':
         renderer.applySpawn(message.parent, message.node)
@@ -358,6 +368,8 @@ export class Game {
       case 'gdespawn':
         renderer.applyDespawn(message.id)
         this.markNavGridDirty()
+        // 選択中のエンティティ(またはその祖先)が消えたら選択も自動解除される
+        if (this.selectedTargetId) this.pushTargetToStore()
         break
       case 'gevent':
         if (message.name === 'hit') {
@@ -381,6 +393,81 @@ export class Game {
       if (this.disposed || !this.world || !this.sceneRenderer) return
       this.navGrid = buildNavGrid({ ...this.world, scene: this.sceneRenderer.liveScene() })
     })
+  }
+
+  /** 対象を選択する(null=解除)。targetableでないノードはthrow(コマンド側で表示) */
+  selectTarget(id: string | null): void {
+    if (id !== null) {
+      const node = this.sceneRenderer?.getNode(id)
+      if (node?.targetable !== true) throw new Error(`「${id}」は対象にできません`)
+    }
+    this.selectedTargetId = id
+    this.pushTargetToStore()
+  }
+
+  /**
+   * 対象指定スキル用の対象取得。選択済みで有効ならそれを返し、
+   * 未選択・無効ならカーソル直下のtargetableエンティティを自動選択して返す
+   */
+  acquireTarget(): { id: string; name: string; x: number; z: number; radius: number } | null {
+    const renderer = this.sceneRenderer
+    if (!renderer) return null
+    const describe = (id: string) => {
+      const node = renderer.getNode(id)
+      if (node?.targetable !== true || node.visible === false) return null
+      const pos = renderer.worldPosition(id)
+      if (!pos) return null
+      const radius = typeof node.collider === 'number' && node.collider > 0 ? node.collider : 0.5
+      return { id, name: String(node.name ?? id), x: pos.x, z: pos.z, radius }
+    }
+    if (this.selectedTargetId) {
+      const current = describe(this.selectedTargetId)
+      if (current) return current
+    }
+    // 未選択(または選択が無効): カーソル直下のtargetableエンティティを自動選択する
+    if (!this.pointer) return null
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    const hoveredId = this.nodeAt(this.pointer.x + rect.left, this.pointer.y + rect.top)
+    const targetId = hoveredId ? renderer.findAncestorWith(hoveredId, 'targetable') : null
+    if (!targetId) return null
+    const hovered = describe(targetId)
+    if (!hovered) return null
+    this.selectedTargetId = targetId
+    this.pushTargetToStore()
+    return hovered
+  }
+
+  /**
+   * 選択中ターゲットのHUDスナップショット(store)と選択リングを更新する。
+   * 選択変更時と、対象ノードに関わるシーン更新(gpatch/gsnap/gdespawn)時に呼ぶ。
+   * ノードが消えていたら(despawn)選択を自動解除する
+   */
+  private pushTargetToStore(): void {
+    const { setTarget } = useAppStore.getState()
+    const id = this.selectedTargetId
+    const node = id ? this.sceneRenderer?.getNode(id) : undefined
+    if (!id || !node) {
+      this.selectedTargetId = null
+      this.targetRing.clear()
+      setTarget(null)
+      return
+    }
+    const alive = node.visible !== false
+    const hasHp = typeof node.hp === 'number' && typeof node.hpMax === 'number'
+    setTarget({
+      id,
+      name: String(node.name ?? id),
+      hp: hasHp ? (node.hp as number) : null,
+      hpMax: hasHp ? (node.hpMax as number) : null,
+      alive,
+    })
+    const pos = this.sceneRenderer?.worldPosition(id)
+    if (alive && pos) {
+      const radius = typeof node.collider === 'number' && node.collider > 0 ? node.collider : 0.5
+      this.targetRing.set({ x: pos.x, z: pos.z, radius })
+    } else {
+      this.targetRing.clear()
+    }
   }
 
   /**
@@ -698,7 +785,7 @@ export class Game {
     moveTo: (x, z) => this.moveTo(x, z),
     stop: () => this.avatar.setPath([]),
     jump: () => this.avatar.jump(),
-    performAction: (name, target) => this.performAction(name, target),
+    performAction: (name, target, tid) => this.performAction(name, target, tid),
     playEmote: (id) => this.playEmote(id),
     setCameraFollow: (mode) => this.setCameraFollow(mode),
     snapCamera: () => {
@@ -744,6 +831,8 @@ export class Game {
     getCurrentWorld: () => useAppStore.getState().world,
     switchWorld: (id) => this.switchWorld(id),
     interact: (id) => this.interactNode(id),
+    selectTarget: (id) => this.selectTarget(id),
+    acquireTarget: () => this.acquireTarget(),
     focusChat: () => useAppStore.getState().requestChatFocus(),
     openVrmPicker: () => useAppStore.getState().requestVrmPicker(),
     clearVrmCache: () => {
@@ -800,7 +889,7 @@ export class Game {
    * アクションを実行し、他ユーザーへ通知する。
    * VRM未読込でもエフェクトだけは成立させる(クリップ再生は自動でスキップ)。
    */
-  performAction(name: string, target?: { x: number; z: number }): void {
+  performAction(name: string, target?: { x: number; z: number }, tid?: string): void {
     const action = this.actions.get(name)
     if (!action) return
     if (action.stopsMovement) this.avatar.setPath([])
@@ -813,7 +902,8 @@ export class Game {
     const tx = action.needsTarget ? (target?.x ?? x) : undefined
     const tz = action.needsTarget ? (target?.z ?? z) : undefined
     this.spawnActionEffect(name, { x, z, yaw, tx, tz })
-    this.net.sendReliable({ t: 'act', name, x, z, yaw, tx, tz })
+    // tid=対象指定スキルの対象ノードid(サーバーがtargetable/射程を検証する)
+    this.net.sendReliable({ t: 'act', name, x, z, yaw, tx, tz, tid })
   }
 
   /**
@@ -844,6 +934,7 @@ export class Game {
     this.unsubscribeStore()
     useAppStore.getState().setDispatch(null)
     this.net.disconnect()
+    this.targetRing.clear()
     this.effects.dispose()
     this.sceneRenderer?.dispose()
     this.streamer.dispose()
@@ -947,12 +1038,22 @@ export class Game {
     void this.dispatch(`/move ${hit.x.toFixed(2)} ${hit.z.toFixed(2)}`)
   }
 
-  /** 左クリック: インタラクト可能なシーンノードなら/interactを発行する */
+  /**
+   * 左クリック: 対象可能エンティティなら/target(選択)、インタラクト可能なら
+   * /interactを発行する(両属性持ちは両方)。何もない場所のクリックは選択解除。
+   * レイキャストは子(ビジュアル)に当たるため、属性を持つ最近傍祖先へ解決する
+   */
   private onClick = (event: MouseEvent): void => {
-    const nodeId = this.nodeAt(event.clientX, event.clientY)
-    if (!nodeId) return
-    if (this.sceneRenderer?.getNode(nodeId)?.interactable !== true) return
-    void this.dispatch(`/interact ${nodeId}`)
+    const renderer = this.sceneRenderer
+    const nodeId = renderer ? this.nodeAt(event.clientX, event.clientY) : null
+    if (!nodeId) {
+      if (this.selectedTargetId) void this.dispatch('/target clear')
+      return
+    }
+    const targetId = renderer?.findAncestorWith(nodeId, 'targetable')
+    if (targetId) void this.dispatch(`/target ${targetId}`)
+    const interactId = renderer?.findAncestorWith(nodeId, 'interactable')
+    if (interactId) void this.dispatch(`/interact ${interactId}`)
   }
 
   /** スクリーン座標直下のシーンノードid(地面以外)。何もなければnull */

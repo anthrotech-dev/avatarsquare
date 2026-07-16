@@ -55,6 +55,21 @@ export interface SlotRef {
   index: number
 }
 
+/**
+ * 選択中ターゲットのHUD表示用スナップショット。Gameが選択変更・gpatch受信時に
+ * 反映する(値の正はサーバー同期済みのシーンノード属性)
+ */
+export interface TargetInfo {
+  id: string
+  /** 表示名(nodeのname属性、無ければid) */
+  name: string
+  /** 公開HP。ノードにhp/hpMaxが両方あるときだけ非null(ゲージ表示の汎用規約) */
+  hp: number | null
+  hpMax: number | null
+  /** visible:falseで倒れている間はfalse(HUDをグレー表示) */
+  alive: boolean
+}
+
 interface AppState {
   avatarName: string | null
   /** ユーザーが設定した表示名。空ならVRM名を代用する */
@@ -77,6 +92,8 @@ interface AppState {
   dispatch: ((line: string) => Promise<void>) | null
   /** 現在座標。Gameが0.2秒スロットルで更新する(毎フレーム更新は再レンダ嵐になる) */
   position: { x: number; z: number }
+  /** 選択中のターゲット(未選択はnull)。TargetPanelが購読する */
+  target: TargetInfo | null
   /** 全ホットバー(非アクティブ=表示から削除済みの設定も保持する) */
   hotbars: HotbarData[]
   chatLog: ChatEntry[]
@@ -138,6 +155,7 @@ interface AppState {
   setCameraFollow: (cameraFollow: boolean) => void
   setDispatch: (dispatch: AppState['dispatch']) => void
   setPosition: (position: { x: number; z: number }) => void
+  setTarget: (target: TargetInfo | null) => void
   setHotbarSlot: (ref: SlotRef, slot: HotbarSlot | null) => void
   swapHotbarSlots: (a: SlotRef, b: SlotRef) => void
   setHotbarKey: (ref: SlotRef, bind: SlotKeybind | null) => void
@@ -192,6 +210,7 @@ export const useAppStore = create<AppState>((set) => ({
   cameraFollow: true,
   dispatch: null,
   position: { x: 0, z: 0 },
+  target: null,
   hotbars: loadHotbars(),
   chatLog: [],
   macrosVersion: 0,
@@ -246,6 +265,24 @@ export const useAppStore = create<AppState>((set) => ({
   setCameraFollow: (cameraFollow) => set({ cameraFollow }),
   setDispatch: (dispatch) => set({ dispatch }),
   setPosition: (position) => set({ position }),
+  setTarget: (target) =>
+    set((state) => {
+      // gpatchのたびに呼ばれ得るため、変化がなければ再レンダを起こさない
+      const prev = state.target
+      if (prev === target) return {}
+      if (
+        prev &&
+        target &&
+        prev.id === target.id &&
+        prev.name === target.name &&
+        prev.hp === target.hp &&
+        prev.hpMax === target.hpMax &&
+        prev.alive === target.alive
+      ) {
+        return {}
+      }
+      return { target }
+    }),
   setHotbarSlot: (ref, slot) =>
     set((state) => {
       const hotbars = updateHotbar(state.hotbars, ref.seq, (h) => {
