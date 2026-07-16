@@ -1,4 +1,5 @@
-FROM golang:1.24 AS build
+# go.modのgoディレクティブ(依存更新で上がる)以上のバージョンにすること
+FROM golang:1.26 AS build
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
