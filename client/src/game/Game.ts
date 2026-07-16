@@ -23,11 +23,11 @@ import { matchKeybind } from '../state/keybinds'
 import { useAppStore } from '../state/store'
 import { saveMicDeviceId } from '../state/voice'
 import { emoteUrl } from '../ui/hud/emotes'
+import { SceneRenderer } from '../world/SceneRenderer'
+import { buildNavGrid, parseWorld, type WorldDef } from '../world/WorldDef'
 import { type ActionDef, BUILTIN_ACTIONS } from './actions'
 import { EffectSystem } from './EffectSystem'
 import { registerBuiltinEffects } from './effects'
-import { buildMap } from './GroundMap'
-import { buildNavGrid, SPAWN } from './MapDef'
 import { acquireFlatMaterial, releaseFlatMaterial } from './materialPool'
 import type { NavGrid } from './pathfinding'
 import { RemoteAvatars } from './RemoteAvatars'
@@ -42,7 +42,10 @@ const ZOOM_DEFAULT = 9
 const MARKER_LIFETIME = 0.6 // 秒
 /** 移動マーカーの共有ジオメトリ(毎回同一形状。disposeしない) */
 const MARKER_GEOMETRY = new THREE.RingGeometry(0.25, 0.35, 32)
-const ROOM_NAME = 'square'
+/** ワールド一覧が取得できない場合の入室先(従来の既定ルーム) */
+const FALLBACK_ROOM = 'square'
+/** 自サイトのpublicに同梱しているワールド(サーバー未設定でも動くフォールバック) */
+const LOCAL_WORLD_URL = '/worlds/square.json'
 const POS_SEND_INTERVAL = 1 / 15 // 秒
 const HUD_POS_INTERVAL = 0.2 // 秒。HUDの座標表示更新(毎フレームはReact再レンダ嵐になる)
 const EDGE_MARGIN = 32 // px。この幅にカーソルが入るとその方向へスクロール
@@ -64,8 +67,10 @@ export class Game {
   private readonly clock = new THREE.Clock()
   private readonly raycaster = new THREE.Raycaster()
   private readonly avatar: Avatar
-  private readonly ground: THREE.Mesh
-  private readonly navGrid: NavGrid
+  /** 現在のワールドの描画・ナビゲーション。ワールド読込完了まではnull */
+  private sceneRenderer: SceneRenderer | null = null
+  private navGrid: NavGrid | null = null
+  private world: WorldDef | null = null
   private readonly markers: ClickMarker[] = []
   private readonly resizeObserver: ResizeObserver
   private zoom = ZOOM_DEFAULT
@@ -115,14 +120,10 @@ export class Game {
     this.scene.background = new THREE.Color(0x25381f)
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200)
 
-    const map = buildMap()
-    this.scene.add(map.group)
-    this.ground = map.ground
-    this.navGrid = buildNavGrid() // マップは静的なので起動時に事前計算
+    // マップはワールドJSONの読込後にapplyWorld()で構築する(start()から)
 
     this.setupLights()
     this.avatar = new Avatar(this.scene)
-    this.avatar.position.set(SPAWN.x, 0, SPAWN.z)
     this.remotes = new RemoteAvatars(this.scene)
     this.effects = new EffectSystem(this.scene)
     this.whisperRings = new WhisperRings(this.scene)
@@ -176,8 +177,49 @@ export class Game {
 
   start(): void {
     this.renderer.setAnimationLoop(this.tick)
-    void this.connectNet()
+    void this.loadInitialWorld()
     void this.restoreCachedVRM()
+  }
+
+  /** 起動時のワールド読込。完了してからネット接続する(入室先=ワールドid) */
+  private async loadInitialWorld(): Promise<void> {
+    const { setWorldLoading } = useAppStore.getState()
+    setWorldLoading('ワールドを読み込み中...')
+    try {
+      const world = await this.fetchWorld(LOCAL_WORLD_URL)
+      if (this.disposed) return
+      this.applyWorld(world, LOCAL_WORLD_URL)
+      setWorldLoading(null)
+    } catch (err) {
+      // マップが無いと何もできないので、オーバーレイにエラーを出したまま止める
+      setWorldLoading(
+        `ワールドの読み込みに失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return
+    }
+    void this.connectNet()
+  }
+
+  private async fetchWorld(url: string): Promise<WorldDef> {
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+    return parseWorld(await res.json())
+  }
+
+  /**
+   * ワールドをシーンへ反映する(初回とワールド切替の共通経路)。
+   * 旧ワールドのGPUリソースはここで解放する。
+   */
+  private applyWorld(world: WorldDef, worldUrl: string): void {
+    this.sceneRenderer?.dispose()
+    this.world = world
+    this.sceneRenderer = new SceneRenderer(world, worldUrl)
+    this.scene.add(this.sceneRenderer.group)
+    this.navGrid = buildNavGrid(world) // ワールドは接続中静的なので切替時に事前計算
+    this.avatar.setPath([])
+    this.avatar.position.set(world.spawn.x, 0, world.spawn.z)
+    this.focus.copy(this.avatar.position)
+    useAppStore.getState().setWorld({ id: world.id, name: world.name })
   }
 
   /** 表示名。プレイヤー名が未設定ならVRMモデル名を代用する */
@@ -318,8 +360,9 @@ export class Game {
     const identity = `user-${Math.random().toString(36).slice(2, 8)}`
     this.identity = identity
     setSelfId(identity)
-    // ?room=xxx で入室先を切り替えられる(既定はsquare)
-    const roomName = new URLSearchParams(location.search).get('room') ?? ROOM_NAME
+    // ?room=xxx で入室先を切り替えられる(既定は現在のワールドid)
+    const roomName =
+      new URLSearchParams(location.search).get('room') ?? this.world?.id ?? FALLBACK_ROOM
     setNetStatus('接続中...')
     // 接続ごとに新しいクライアントを作り、再接続と競合した古い試行は破棄する
     const net = new NetClient()
@@ -570,8 +613,9 @@ export class Game {
     },
   }
 
-  /** A*経路探索して移動を開始する。到達不能ならfalse */
+  /** A*経路探索して移動を開始する。到達不能(またはワールド未読込)ならfalse */
   moveTo(x: number, z: number): boolean {
+    if (!this.navGrid) return false
     const path = this.navGrid.findPath(
       { x: this.avatar.position.x, z: this.avatar.position.z },
       { x, z },
@@ -653,6 +697,7 @@ export class Game {
     useAppStore.getState().setDispatch(null)
     this.net.disconnect()
     this.effects.dispose()
+    this.sceneRenderer?.dispose()
     this.streamer.dispose()
     this.renderer.setAnimationLoop(null)
     this.renderer.domElement.removeEventListener('contextmenu', this.onContextMenu)
@@ -768,7 +813,9 @@ export class Game {
       -((clientY - rect.top) / rect.height) * 2 + 1,
     )
     this.raycaster.setFromCamera(pointer, this.camera)
-    const hit = this.raycaster.intersectObject(this.ground, false)[0]
+    const ground = this.sceneRenderer?.ground
+    if (!ground) return null
+    const hit = this.raycaster.intersectObject(ground, false)[0]
     return hit ? { x: hit.point.x, z: hit.point.z } : null
   }
 

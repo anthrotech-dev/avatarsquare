@@ -61,6 +61,12 @@ interface AppState {
   playerName: string
   status: string
   netStatus: string
+  /** ワールド読込中のロード画面メッセージ(null=非表示) */
+  worldLoading: string | null
+  /** 現在のワールド(未ロードはnull) */
+  world: { id: string; name: string } | null
+  /** サーバーが提供するワールド一覧(/worldsから。未取得は空) */
+  worlds: Array<{ id: string; name: string }>
   peers: number
   /** 自分の接続identity(未接続はnull)。プレイヤー一覧の「自分」表示に使う */
   selfId: string | null
@@ -125,6 +131,9 @@ interface AppState {
   setPlayerName: (name: string) => void
   setStatus: (status: string) => void
   setNetStatus: (netStatus: string) => void
+  setWorldLoading: (worldLoading: string | null) => void
+  setWorld: (world: { id: string; name: string } | null) => void
+  setWorlds: (worlds: Array<{ id: string; name: string }>) => void
   setPeers: (peers: number) => void
   setCameraFollow: (cameraFollow: boolean) => void
   setDispatch: (dispatch: AppState['dispatch']) => void
@@ -174,6 +183,9 @@ export const useAppStore = create<AppState>((set) => ({
   playerName: loadPlayerName(),
   status: '',
   netStatus: 'オフライン',
+  worldLoading: null,
+  world: null,
+  worlds: [],
   peers: 0,
   selfId: null,
   players: [],
@@ -227,6 +239,9 @@ export const useAppStore = create<AppState>((set) => ({
   },
   setStatus: (status) => set({ status }),
   setNetStatus: (netStatus) => set({ netStatus }),
+  setWorldLoading: (worldLoading) => set({ worldLoading }),
+  setWorld: (world) => set({ world }),
+  setWorlds: (worlds) => set({ worlds }),
   setPeers: (peers) => set({ peers }),
   setCameraFollow: (cameraFollow) => set({ cameraFollow }),
   setDispatch: (dispatch) => set({ dispatch }),

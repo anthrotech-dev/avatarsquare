@@ -1,6 +1,13 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { buildNavGrid, SPAWN } from './MapDef'
+import { buildNavGrid, parseWorld } from '../world/WorldDef'
 import { NavGrid } from './pathfinding'
+
+/** 実ワールド(public配信のsquare.json)を読み込む。生成物がテストの入力になる */
+function loadSquareWorld() {
+  const url = new URL('../../public/worlds/square.json', import.meta.url)
+  return parseWorld(JSON.parse(readFileSync(url, 'utf-8')))
+}
 
 function makeGrid(block?: (x: number, z: number) => boolean): NavGrid {
   const grid = new NavGrid(20, 0.5)
@@ -54,7 +61,9 @@ describe('NavGrid.findPath', () => {
   })
 
   it('実マップのグリッドでスポーン地点から各所へ到達できる', () => {
-    const grid = buildNavGrid()
+    const world = loadSquareWorld()
+    const grid = buildNavGrid(world)
+    const SPAWN = world.spawn
     expect(grid.isWalkableAt(SPAWN.x, SPAWN.z)).toBe(true)
     for (const goal of [
       { x: -25, z: -25 }, // 森の奥

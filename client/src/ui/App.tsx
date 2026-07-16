@@ -8,6 +8,7 @@ import { Hotbar } from './hud/Hotbar'
 import { HotbarConfig } from './hud/HotbarConfig'
 import { HudEditBanner } from './hud/HudEditBanner'
 import { HudElement } from './hud/HudElement'
+import { LoadingOverlay } from './hud/LoadingOverlay'
 import { MainMenu, useEscMenu } from './hud/MainMenu'
 import { PlayersWindow } from './hud/PlayersWindow'
 import { SettingsWindow } from './hud/SettingsPanel'
@@ -126,6 +127,7 @@ export function App() {
         }}
       />
       {dragging && <div className="drop-cover">VRMファイルをドロップ</div>}
+      <LoadingOverlay />
     </div>
   )
 }

@@ -1,0 +1,665 @@
+{
+  "version": 1,
+  "id": "square",
+  "name": "はじまりの広場",
+  "size": 60,
+  "spawn": {
+    "x": 3,
+    "z": 5
+  },
+  "scene": [
+    {
+      "id": "ground",
+      "kind": "ground",
+      "texture": "square/ground.webp"
+    },
+    {
+      "id": "sea",
+      "kind": "collider",
+      "shape": "polygon",
+      "points": [
+        [
+          17.094,
+          -30
+        ],
+        [
+          16.821,
+          -29
+        ],
+        [
+          16.546,
+          -28
+        ],
+        [
+          16.273,
+          -27
+        ],
+        [
+          16.005,
+          -26
+        ],
+        [
+          15.746,
+          -25
+        ],
+        [
+          15.498,
+          -24
+        ],
+        [
+          15.265,
+          -23
+        ],
+        [
+          15.049,
+          -22
+        ],
+        [
+          14.852,
+          -21
+        ],
+        [
+          14.679,
+          -20
+        ],
+        [
+          14.529,
+          -19
+        ],
+        [
+          14.406,
+          -18
+        ],
+        [
+          14.311,
+          -17
+        ],
+        [
+          14.245,
+          -16
+        ],
+        [
+          14.208,
+          -15
+        ],
+        [
+          14.201,
+          -14
+        ],
+        [
+          14.225,
+          -13
+        ],
+        [
+          14.278,
+          -12
+        ],
+        [
+          14.361,
+          -11
+        ],
+        [
+          14.472,
+          -10
+        ],
+        [
+          14.61,
+          -9
+        ],
+        [
+          14.773,
+          -8
+        ],
+        [
+          14.96,
+          -7
+        ],
+        [
+          15.167,
+          -6
+        ],
+        [
+          15.393,
+          -5
+        ],
+        [
+          15.635,
+          -4
+        ],
+        [
+          15.89,
+          -3
+        ],
+        [
+          16.154,
+          -2
+        ],
+        [
+          16.426,
+          -1
+        ],
+        [
+          16.7,
+          0
+        ],
+        [
+          16.974,
+          1
+        ],
+        [
+          17.246,
+          2
+        ],
+        [
+          17.51,
+          3
+        ],
+        [
+          17.765,
+          4
+        ],
+        [
+          18.007,
+          5
+        ],
+        [
+          18.233,
+          6
+        ],
+        [
+          18.44,
+          7
+        ],
+        [
+          18.627,
+          8
+        ],
+        [
+          18.79,
+          9
+        ],
+        [
+          18.928,
+          10
+        ],
+        [
+          19.039,
+          11
+        ],
+        [
+          19.122,
+          12
+        ],
+        [
+          19.175,
+          13
+        ],
+        [
+          19.199,
+          14
+        ],
+        [
+          19.192,
+          15
+        ],
+        [
+          19.155,
+          16
+        ],
+        [
+          19.089,
+          17
+        ],
+        [
+          18.994,
+          18
+        ],
+        [
+          18.871,
+          19
+        ],
+        [
+          18.721,
+          20
+        ],
+        [
+          18.548,
+          21
+        ],
+        [
+          18.351,
+          22
+        ],
+        [
+          18.135,
+          23
+        ],
+        [
+          17.902,
+          24
+        ],
+        [
+          17.654,
+          25
+        ],
+        [
+          17.395,
+          26
+        ],
+        [
+          17.127,
+          27
+        ],
+        [
+          16.854,
+          28
+        ],
+        [
+          16.579,
+          29
+        ],
+        [
+          16.306,
+          30
+        ],
+        [
+          35,
+          30
+        ],
+        [
+          35,
+          -30
+        ]
+      ]
+    },
+    {
+      "id": "fountain",
+      "kind": "collider",
+      "shape": "circle",
+      "x": 0,
+      "z": 0,
+      "r": 2.4
+    },
+    {
+      "id": "tree-1",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": -22,
+      "z": -16,
+      "w": 2.47,
+      "h": 4.94,
+      "collider": 0.715
+    },
+    {
+      "id": "tree-2",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": -18,
+      "z": -21,
+      "w": 2.09,
+      "h": 4.18,
+      "collider": 0.605
+    },
+    {
+      "id": "tree-3",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": -13,
+      "z": -17,
+      "w": 2.66,
+      "h": 5.32,
+      "collider": 0.77
+    },
+    {
+      "id": "tree-4",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": -9,
+      "z": -22,
+      "w": 2.28,
+      "h": 4.56,
+      "collider": 0.66
+    },
+    {
+      "id": "tree-5",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": -4,
+      "z": -16,
+      "w": 2.47,
+      "h": 4.94,
+      "collider": 0.715
+    },
+    {
+      "id": "tree-6",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": 1,
+      "z": -21,
+      "w": 2.09,
+      "h": 4.18,
+      "collider": 0.605
+    },
+    {
+      "id": "tree-7",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": 6,
+      "z": -17,
+      "w": 2.28,
+      "h": 4.56,
+      "collider": 0.66
+    },
+    {
+      "id": "tree-8",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": 10,
+      "z": -23,
+      "w": 1.9,
+      "h": 3.8,
+      "collider": 0.55
+    },
+    {
+      "id": "tree-9",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": -20,
+      "z": -26,
+      "w": 2.28,
+      "h": 4.56,
+      "collider": 0.66
+    },
+    {
+      "id": "tree-10",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": -14,
+      "z": -25,
+      "w": 1.9,
+      "h": 3.8,
+      "collider": 0.55
+    },
+    {
+      "id": "tree-11",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": -7,
+      "z": -27,
+      "w": 2.47,
+      "h": 4.94,
+      "collider": 0.715
+    },
+    {
+      "id": "tree-12",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": 0,
+      "z": -26,
+      "w": 2.28,
+      "h": 4.56,
+      "collider": 0.66
+    },
+    {
+      "id": "tree-13",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": -25,
+      "z": -22,
+      "w": 1.9,
+      "h": 3.8,
+      "collider": 0.55
+    },
+    {
+      "id": "tree-14",
+      "kind": "sprite",
+      "image": "/sprites/tree-pine.png",
+      "x": 5,
+      "z": -26,
+      "w": 2.66,
+      "h": 5.32,
+      "collider": 0.77
+    },
+    {
+      "id": "tree-15",
+      "kind": "sprite",
+      "image": "/sprites/tree-oak.png",
+      "x": -17,
+      "z": -14,
+      "w": 2.88,
+      "h": 3.06,
+      "collider": 0.495
+    },
+    {
+      "id": "tree-16",
+      "kind": "sprite",
+      "image": "/sprites/tree-autumn.png",
+      "x": 2,
+      "z": -14,
+      "w": 2.115,
+      "h": 3.06,
+      "collider": 0.495
+    },
+    {
+      "id": "tree-17",
+      "kind": "sprite",
+      "image": "/sprites/tree-oak.png",
+      "x": -24,
+      "z": 6,
+      "w": 3.84,
+      "h": 4.08,
+      "collider": 0.66
+    },
+    {
+      "id": "tree-18",
+      "kind": "sprite",
+      "image": "/sprites/tree-broad.png",
+      "x": -18,
+      "z": 14,
+      "w": 4.1,
+      "h": 3.2,
+      "collider": 0.55
+    },
+    {
+      "id": "tree-19",
+      "kind": "sprite",
+      "image": "/sprites/tree-oak.png",
+      "x": -25,
+      "z": 22,
+      "w": 4.16,
+      "h": 4.42,
+      "collider": 0.715
+    },
+    {
+      "id": "tree-20",
+      "kind": "sprite",
+      "image": "/sprites/tree-autumn.png",
+      "x": -12,
+      "z": 24,
+      "w": 2.585,
+      "h": 3.74,
+      "collider": 0.605
+    },
+    {
+      "id": "tree-21",
+      "kind": "sprite",
+      "image": "/sprites/tree-broad.png",
+      "x": -3,
+      "z": 20,
+      "w": 4.1,
+      "h": 3.2,
+      "collider": 0.55
+    },
+    {
+      "id": "tree-22",
+      "kind": "sprite",
+      "image": "/sprites/tree-oak.png",
+      "x": 8,
+      "z": 22,
+      "w": 3.84,
+      "h": 4.08,
+      "collider": 0.66
+    },
+    {
+      "id": "tree-23",
+      "kind": "sprite",
+      "image": "/sprites/tree-broad.png",
+      "x": 14,
+      "z": 12,
+      "w": 3.69,
+      "h": 2.88,
+      "collider": 0.495
+    },
+    {
+      "id": "tree-24",
+      "kind": "sprite",
+      "image": "/sprites/tree-oak.png",
+      "x": 9,
+      "z": -9,
+      "w": 3.2,
+      "h": 3.4,
+      "collider": 0.55
+    },
+    {
+      "id": "tree-25",
+      "kind": "sprite",
+      "image": "/sprites/tree-palm.png",
+      "x": 16,
+      "z": 7,
+      "w": 2.64,
+      "h": 4.44,
+      "collider": 0.66
+    },
+    {
+      "id": "tree-26",
+      "kind": "sprite",
+      "image": "/sprites/tree-palm.png",
+      "x": 13,
+      "z": -16,
+      "w": 2.2,
+      "h": 3.7,
+      "collider": 0.55
+    },
+    {
+      "id": "tree-27",
+      "kind": "sprite",
+      "image": "/sprites/tree-palm.png",
+      "x": 17,
+      "z": 12,
+      "w": 2.42,
+      "h": 4.07,
+      "collider": 0.605
+    },
+    {
+      "id": "rock-1",
+      "kind": "sprite",
+      "image": "/sprites/rock-gray.png",
+      "x": 12,
+      "z": -14,
+      "w": 1.215,
+      "h": 0.765,
+      "collider": 0.63
+    },
+    {
+      "id": "rock-2",
+      "kind": "sprite",
+      "image": "/sprites/rock-brown.png",
+      "x": -20,
+      "z": -8,
+      "w": 1.92,
+      "h": 0.996,
+      "collider": 0.84
+    },
+    {
+      "id": "rock-3",
+      "kind": "sprite",
+      "image": "/sprites/rock-brown.png",
+      "x": 12,
+      "z": 16,
+      "w": 1.28,
+      "h": 0.664,
+      "collider": 0.56
+    },
+    {
+      "id": "rock-4",
+      "kind": "sprite",
+      "image": "/sprites/rock-gray.png",
+      "x": -15,
+      "z": 3,
+      "w": 1.35,
+      "h": 0.85,
+      "collider": 0.7
+    },
+    {
+      "id": "bush-1",
+      "kind": "sprite",
+      "image": "/sprites/tree-bush.png",
+      "x": 9.2,
+      "z": 7.7,
+      "w": 1.15,
+      "h": 1.9,
+      "collider": 0.6
+    },
+    {
+      "id": "bush-2",
+      "kind": "sprite",
+      "image": "/sprites/tree-bush.png",
+      "x": 0,
+      "z": 12,
+      "w": 1.265,
+      "h": 2.09,
+      "collider": 0.66
+    },
+    {
+      "id": "bush-3",
+      "kind": "sprite",
+      "image": "/sprites/tree-bush.png",
+      "x": -12,
+      "z": 0,
+      "w": 1.15,
+      "h": 1.9,
+      "collider": 0.6
+    },
+    {
+      "id": "bush-4",
+      "kind": "sprite",
+      "image": "/sprites/tree-bush.png",
+      "x": -9.2,
+      "z": -7.7,
+      "w": 1.15,
+      "h": 1.9,
+      "collider": 0.6
+    },
+    {
+      "id": "bush-5",
+      "kind": "sprite",
+      "image": "/sprites/tree-bush.png",
+      "x": -4.1,
+      "z": -11.3,
+      "w": 1.265,
+      "h": 2.09,
+      "collider": 0.66
+    },
+    {
+      "id": "bush-6",
+      "kind": "sprite",
+      "image": "/sprites/tree-bush.png",
+      "x": 4.1,
+      "z": -11.3,
+      "w": 1.15,
+      "h": 1.9,
+      "collider": 0.6
+    },
+    {
+      "id": "bush-7",
+      "kind": "sprite",
+      "image": "/sprites/tree-bush.png",
+      "x": 9.2,
+      "z": -7.7,
+      "w": 1.265,
+      "h": 2.09,
+      "collider": 0.66
+    }
+  ],
+  "scripts": []
+}
