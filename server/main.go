@@ -78,6 +78,9 @@ func main() {
 		for _, w := range worlds.All() {
 			log.Printf("world loaded: %s (%s) from %s", w.ID, w.Name, w.SourceURL)
 		}
+		// 各ワールドのルームにボット(__world)として常駐し、
+		// ギミック(wasmスクリプト)の状態をサーバー権威で同期する
+		startWorldBots(worlds, livekitURL, apiKey, apiSecret)
 	}
 
 	// k8s等のliveness/readiness probe用。プロキシ有効時も/tokenと同様に優先される
