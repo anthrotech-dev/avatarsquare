@@ -5,11 +5,17 @@ import {
   clampWhisperRadius,
   decodeMessage,
   encodeMessage,
+  isSceneAuthorityMessage,
+  isSystemId,
   isVoiceMode,
   MAX_CHAT_LENGTH,
   MAX_NAME_LENGTH,
   type PosMessage,
   type ProfileMessage,
+  type SceneEventMessage,
+  type SceneInputMessage,
+  type ScenePatchMessage,
+  type SceneSnapshotMessage,
   type SpeakMessage,
   sanitizeChatText,
   sanitizeName,
@@ -17,6 +23,7 @@ import {
   WHISPER_RADIUS_DEFAULT,
   WHISPER_RADIUS_MAX,
   WHISPER_RADIUS_MIN,
+  WORLD_BOT_ID,
 } from './protocol'
 
 describe('encodeMessage / decodeMessage', () => {
@@ -57,6 +64,23 @@ describe('encodeMessage / decodeMessage', () => {
   it('spkメッセージ(発話中通知)がラウンドトリップする', () => {
     const message: SpeakMessage = { t: 'spk', on: true }
     expect(decodeMessage(encodeMessage(message))).toEqual(message)
+  })
+
+  it('シーン系メッセージ(gpatch/gsnap/gevent/ginput)がラウンドトリップする', () => {
+    const patch: ScenePatchMessage = { t: 'gpatch', id: 'scarecrow-hp', attrs: { value: 0.9 } }
+    expect(decodeMessage(encodeMessage(patch))).toEqual(patch)
+
+    const snapshot: SceneSnapshotMessage = {
+      t: 'gsnap',
+      patches: { 'scarecrow-hp': { value: 0.5 }, 'counter-label': { text: '3' } },
+    }
+    expect(decodeMessage(encodeMessage(snapshot))).toEqual(snapshot)
+
+    const event: SceneEventMessage = { t: 'gevent', id: 'scarecrow', name: 'hit' }
+    expect(decodeMessage(encodeMessage(event))).toEqual(event)
+
+    const input: SceneInputMessage = { t: 'ginput', id: 'counter-button', action: 'interact' }
+    expect(decodeMessage(encodeMessage(input))).toEqual(input)
   })
 
   it('vmodeメッセージ(発音モード通知)がラウンドトリップする', () => {
@@ -139,5 +163,22 @@ describe('sanitizeChatText', () => {
   it('通常の本文はそのまま通る(名前の24文字制限は受けない)', () => {
     const text = 'a'.repeat(100)
     expect(sanitizeChatText(text)).toBe(text)
+  })
+})
+
+describe('isSystemId / isSceneAuthorityMessage', () => {
+  it('__始まりのidをシステム参加者として判定する', () => {
+    expect(isSystemId(WORLD_BOT_ID)).toBe(true)
+    expect(isSystemId('__other')).toBe(true)
+    expect(isSystemId('user-abc123')).toBe(false)
+  })
+
+  it('サーバー権威メッセージ(gpatch/gsnap/gevent)を判別する', () => {
+    expect(isSceneAuthorityMessage({ t: 'gpatch', id: 'a', attrs: {} })).toBe(true)
+    expect(isSceneAuthorityMessage({ t: 'gsnap', patches: {} })).toBe(true)
+    expect(isSceneAuthorityMessage({ t: 'gevent', id: 'a', name: 'hit' })).toBe(true)
+    // ginputはクライアント発なので権威メッセージではない
+    expect(isSceneAuthorityMessage({ t: 'ginput', id: 'a', action: 'interact' })).toBe(false)
+    expect(isSceneAuthorityMessage({ t: 'chat', name: '', text: 'hi' })).toBe(false)
   })
 })

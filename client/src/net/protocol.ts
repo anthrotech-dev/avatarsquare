@@ -1,7 +1,19 @@
 /**
- * DataChannelを流れるゲームメッセージの定義。
- * Goサーバーは中身を解釈しないため、型定義はここに集約する。
+ * DataChannelを流れるゲームメッセージの定義(Go側のミラーはserver/scene)。
+ * プレイヤー間メッセージ(pos/act/chat等)はクライアント同士で交換し、
+ * シーン系メッセージ(gpatch/gsnap/gevent)はワールドボット(サーバー)だけが
+ * 発行する権威更新。クライアントは送信者identityで検証する。
  */
+
+/** ワールドボット(サーバー)のidentity。シーン系メッセージの唯一の正規送信者 */
+export const WORLD_BOT_ID = '__world'
+/** システム参加者のprefix。プレイヤー扱いしない(サーバーがトークン発行を拒否する) */
+export const SYSTEM_ID_PREFIX = '__'
+
+/** システム参加者(ワールドボット等)か。プレイヤー一覧・人数から除外する */
+export function isSystemId(id: string): boolean {
+  return id.startsWith(SYSTEM_ID_PREFIX)
+}
 
 export interface PosMessage {
   t: 'pos'
@@ -93,6 +105,42 @@ export interface VoiceModeMessage {
   radius?: number
 }
 
+/**
+ * サーバー→全員: シーンノードの属性パッチ(権威更新)。
+ * 値の意味はワールドのwasmスクリプトとクライアント描画の取り決めで、
+ * プロトコルとしては解釈しない(HTMLのDOM更新に相当)。
+ */
+export interface ScenePatchMessage {
+  t: 'gpatch'
+  /** シーンノードid */
+  id: string
+  attrs: Record<string, unknown>
+}
+
+/** サーバー→新規参加者: 初期シーンからの累積差分(入室直後に1回) */
+export interface SceneSnapshotMessage {
+  t: 'gsnap'
+  patches: Record<string, Record<string, unknown>>
+}
+
+/** サーバー→全員: 一過性のシーンイベント(被弾フラッシュ等の演出トリガー) */
+export interface SceneEventMessage {
+  t: 'gevent'
+  id: string
+  name: string
+  data?: Record<string, unknown>
+}
+
+/**
+ * クライアント→サーバー: ノードへの入力(クリックインタラクト等)。
+ * destinationIdentities: [WORLD_BOT_ID] で送る(他プレイヤーには不要)
+ */
+export interface SceneInputMessage {
+  t: 'ginput'
+  id: string
+  action: string
+}
+
 export type GameMessage =
   | PosMessage
   | ActMessage
@@ -100,6 +148,10 @@ export type GameMessage =
   | ChatMessage
   | SpeakMessage
   | VoiceModeMessage
+  | ScenePatchMessage
+  | SceneSnapshotMessage
+  | SceneEventMessage
+  | SceneInputMessage
 
 export const MAX_NAME_LENGTH = 24
 export const MAX_CHAT_LENGTH = 200
@@ -129,7 +181,25 @@ export function sanitizeChatText(input: string): string {
   return sanitizeText(input, MAX_CHAT_LENGTH)
 }
 
-const MESSAGE_TYPES = new Set(['pos', 'act', 'profile', 'chat', 'spk', 'vmode'])
+const MESSAGE_TYPES = new Set([
+  'pos',
+  'act',
+  'profile',
+  'chat',
+  'spk',
+  'vmode',
+  'gpatch',
+  'gsnap',
+  'gevent',
+  'ginput',
+])
+
+/** シーン系メッセージ(サーバー権威)か。ワールドボット以外から届いたら捨てる */
+export function isSceneAuthorityMessage(
+  message: GameMessage,
+): message is ScenePatchMessage | SceneSnapshotMessage | SceneEventMessage {
+  return message.t === 'gpatch' || message.t === 'gsnap' || message.t === 'gevent'
+}
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
