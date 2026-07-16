@@ -406,6 +406,51 @@ function paintScarecrow(): HTMLCanvasElement {
   return canvas
 }
 
+function paintSlime(): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  canvas.width = 160
+  canvas.height = 128
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('2d context unavailable')
+  const w = canvas.width
+  const h = canvas.height
+
+  // ドーム型のボディ(下すぼまりの半透明ゼリー)
+  ctx.fillStyle = '#4fae62'
+  ctx.beginPath()
+  ctx.moveTo(w * 0.1, h * 0.88)
+  ctx.bezierCurveTo(w * 0.06, h * 0.42, w * 0.28, h * 0.1, w * 0.5, h * 0.1)
+  ctx.bezierCurveTo(w * 0.72, h * 0.1, w * 0.94, h * 0.42, w * 0.9, h * 0.88)
+  ctx.closePath()
+  ctx.fill()
+  ctx.strokeStyle = '#2f7a42'
+  ctx.lineWidth = 5
+  ctx.stroke()
+  // 底の影(接地感)
+  ctx.fillStyle = '#2f7a42'
+  ctx.beginPath()
+  ctx.ellipse(w * 0.5, h * 0.88, w * 0.4, h * 0.07, 0, 0, Math.PI * 2)
+  ctx.fill()
+  // ハイライト(ぷるぷる感)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)'
+  ctx.beginPath()
+  ctx.ellipse(w * 0.34, h * 0.32, w * 0.1, h * 0.14, -0.5, 0, Math.PI * 2)
+  ctx.fill()
+  // 目
+  ctx.fillStyle = '#1e3a26'
+  ctx.beginPath()
+  ctx.ellipse(w * 0.4, h * 0.52, 6, 9, 0, 0, Math.PI * 2)
+  ctx.ellipse(w * 0.6, h * 0.52, 6, 9, 0, 0, Math.PI * 2)
+  ctx.fill()
+  // 口(にっこり)
+  ctx.strokeStyle = '#1e3a26'
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.arc(w * 0.5, h * 0.58, 12, Math.PI * 0.2, Math.PI * 0.8)
+  ctx.stroke()
+  return canvas
+}
+
 // ---------------------------------------------------------------------------
 // ワールドJSONの生成
 // ---------------------------------------------------------------------------
@@ -517,6 +562,32 @@ function buildWorldJson(): string {
     { id: 'counter-label', kind: 'text', x: 4, z: 9, y: 1.5, text: '0' },
   )
 
+  // スライム召喚ボタン: interactでスライム(追跡・近接攻撃エンティティ)が湧く。
+  // 振る舞いはgimmicks/slime.wasmがslime属性を見て担う
+  scene.push(
+    {
+      id: 'slime-button',
+      kind: 'cylinder',
+      x: 7,
+      z: 9,
+      r: 0.4,
+      h: 0.3,
+      color: '#44aa44',
+      collider: 0.5,
+      interactable: true,
+      slime: {
+        hp: 30,
+        speed: 1.2,
+        aggroRange: 6,
+        attackRange: 1.0,
+        attackMs: 2000,
+        image: 'square/slime.png',
+        spawnOffset: [2, 0],
+      },
+    },
+    { id: 'slime-button-label', kind: 'text', x: 7, z: 9, y: 1.5, text: 'スライム召喚' },
+  )
+
   // 南の小島へのポータル(東の砂浜への道の先)。portal属性はクライアントが解釈して
   // ワールド切替する(画像はワールド間共有の /worlds/portal.png、island生成器が出力)
   scene.push(
@@ -541,7 +612,7 @@ function buildWorldJson(): string {
     size: MAP_SIZE,
     spawn: SPAWN,
     scene,
-    scripts: ['../gimmicks/scarecrow.wasm', '../gimmicks/counter.wasm'],
+    scripts: ['../gimmicks/scarecrow.wasm', '../gimmicks/counter.wasm', '../gimmicks/slime.wasm'],
   }
   return `${JSON.stringify(world, null, 2)}\n`
 }
@@ -554,6 +625,7 @@ interface GenerateResult {
   json: string
   groundPng: string // dataURL
   scarecrowPng: string // dataURL
+  slimePng: string // dataURL
 }
 
 async function generate(): Promise<GenerateResult> {
@@ -573,6 +645,7 @@ async function generate(): Promise<GenerateResult> {
     // 地面は非透過かつ巨大(2048px)なのでWebPで書き出す(PNGだと~9MBになる)
     groundPng: canvas.toDataURL('image/webp', 0.9),
     scarecrowPng: paintScarecrow().toDataURL('image/png'),
+    slimePng: paintSlime().toDataURL('image/png'),
   }
 }
 

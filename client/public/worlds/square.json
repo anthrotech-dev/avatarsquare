@@ -717,6 +717,37 @@
       "text": "0"
     },
     {
+      "id": "slime-button",
+      "kind": "cylinder",
+      "x": 7,
+      "z": 9,
+      "r": 0.4,
+      "h": 0.3,
+      "color": "#44aa44",
+      "collider": 0.5,
+      "interactable": true,
+      "slime": {
+        "hp": 30,
+        "speed": 1.2,
+        "aggroRange": 6,
+        "attackRange": 1.0,
+        "attackMs": 2000,
+        "image": "square/slime.png",
+        "spawnOffset": [
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "id": "slime-button-label",
+      "kind": "text",
+      "x": 7,
+      "z": 9,
+      "y": 1.5,
+      "text": "スライム召喚"
+    },
+    {
       "id": "portal-island",
       "kind": "sprite",
       "image": "portal.png",
@@ -738,6 +769,7 @@
   ],
   "scripts": [
     "../gimmicks/scarecrow.wasm",
-    "../gimmicks/counter.wasm"
+    "../gimmicks/counter.wasm",
+    "../gimmicks/slime.wasm"
   ]
 }
