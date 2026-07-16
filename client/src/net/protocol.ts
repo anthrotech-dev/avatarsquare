@@ -23,6 +23,8 @@ export interface PosMessage {
   z: number
   yaw: number
   moving: boolean
+  /** 戦闘不能中フラグ。生存中は省略(旧クライアントも送らない)。受信側は === true で扱う */
+  dead?: boolean
 }
 
 /**

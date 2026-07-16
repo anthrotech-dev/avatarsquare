@@ -12,7 +12,7 @@ import {
   loadAnimationClip,
   looksLikeAnimationFile,
 } from './animationLoaders'
-import { buildActionClips, buildIdleClip, buildWalkClip } from './builtinClips'
+import { buildActionClips, buildDeathClip, buildIdleClip, buildWalkClip } from './builtinClips'
 import { AVATAR_LAYER } from './captureSpec'
 import { isAirborne, JUMP_SPEED, stepVertical } from './verticalMotion'
 
@@ -38,6 +38,7 @@ export class Avatar {
   private moving = false
   private walkPhase = 0
   private vy = 0
+  private dead = false
   /** 口パクの開き具合(0〜1)。VoiceChatが毎フレーム更新する */
   private mouthOpen = 0
   // ネームプレートは名前が付くまで生成されないため、VC状態は別途保持して生成時に適用する
@@ -135,8 +136,28 @@ export class Avatar {
     this.bubble.show(text)
   }
 
+  /**
+   * 戦闘不能状態の切替。戦闘不能中はdeathクリップの最終フレーム(仰向け)で
+   * 静止し、VRM未読込の間はプレースホルダーを寝かせて代用する。
+   */
+  setDead(dead: boolean): void {
+    if (this.dead === dead) return
+    this.dead = dead
+    if (dead) {
+      this.path = []
+      this.animation?.playHold('death')
+      this.placeholder.rotation.set(-Math.PI / 2, 0, 0)
+      this.placeholder.position.y = 0.3
+    } else {
+      this.animation?.releaseHold()
+      this.placeholder.rotation.set(0, 0, 0)
+      this.placeholder.position.y = 0
+    }
+  }
+
   /** ジャンプを開始する。空中なら失敗。移動パスは中断しない */
   jump(): boolean {
+    if (this.dead) return false
     if (isAirborne({ y: this.root.position.y, vy: this.vy })) return false
     this.vy = JUMP_SPEED
     if (this.animation?.has('jump')) this.animation.playOnce('jump')
@@ -189,8 +210,11 @@ export class Avatar {
     this.animation = new AnimationController(vrm)
     this.animation.register('idle', buildIdleClip(vrm))
     this.animation.register('walk', buildWalkClip(vrm))
+    this.animation.register('death', buildDeathClip(vrm))
     for (const [name, clip] of buildActionClips(vrm)) this.animation.register(name, clip)
     this.animation.setLocomotion('idle')
+    // 戦闘不能中にVRMを読み込んだ場合も倒れ姿勢を維持する
+    if (this.dead) this.animation.playHold('death')
     void this.loadDefaultAnimations()
 
     const meta = vrm.meta as { name?: string; title?: string }
@@ -228,7 +252,7 @@ export class Avatar {
       this.animation.setLocomotion(this.moving ? 'walk' : 'idle')
       this.animation.update(delta)
     }
-    if (this.placeholder.visible) this.updatePlaceholderMotion(delta)
+    if (this.placeholder.visible && !this.dead) this.updatePlaceholderMotion(delta)
     this.bubble?.update(delta)
     // ミキサー適用後・vrm.update前に上書きすることで、VRMAが表情トラックを
     // 持っていても口パクが勝つ。expressionManager非搭載のVRMではno-op
@@ -251,7 +275,7 @@ export class Avatar {
     const vrm = this.vrm
     const animation = this.animation
     if (!vrm || !animation) return
-    for (const name of ['idle', 'walk', 'jump', 'slash', 'shoot'] as const) {
+    for (const name of ['idle', 'walk', 'jump', 'slash', 'shoot', 'death'] as const) {
       for (const kind of ['vrma', 'fbx'] as const) {
         try {
           const res = await fetch(`/animations/${name}.${kind}`)

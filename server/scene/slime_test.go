@@ -23,7 +23,8 @@ const slimeWorldJSON = `{
     {"id": "slime-button", "kind": "cylinder", "x": 0, "z": 0, "r": 0.4,
      "collider": 0.5, "interactable": true,
      "slime": {"hp": 30, "speed": 5.0, "aggroRange": 6, "attackRange": 1.0,
-               "attackMs": 300, "image": "square/slime.png", "spawnOffset": [2, 0]}}
+               "attackMs": 300, "damage": 10, "image": "square/slime.png",
+               "spawnOffset": [2, 0]}}
   ],
   "scripts": ["../gimmicks/slime.wasm"]
 }`
@@ -61,6 +62,14 @@ func newSlimeSession(t *testing.T) (*Session, chan broadcastRec) {
 
 func posMsg(x, z float64) []byte {
 	data, _ := json.Marshal(map[string]any{"t": "pos", "x": x, "z": z, "yaw": 0, "moving": false})
+	return data
+}
+
+// deadPosMsg は戦闘不能の自己申告付きpos(クライアントはHP0の間これを送る)
+func deadPosMsg(x, z float64) []byte {
+	data, _ := json.Marshal(map[string]any{
+		"t": "pos", "x": x, "z": z, "yaw": 0, "moving": false, "dead": true,
+	})
 	return data
 }
 
@@ -126,13 +135,16 @@ func TestSlimeSpawnChaseAttackAndDeath(t *testing.T) {
 		t.Errorf("接近していない: %v -> %v", distToAlice(first), distToAlice(second))
 	}
 
-	// attackRange(1.0m)到達 → 攻撃演出gevent(data.x/z=プレイヤー位置)が繰り返し出る
+	// attackRange(1.0m)到達 → 攻撃gevent(data.x/z=プレイヤー位置、target/damage同梱)が繰り返し出る
 	rec = waitFor(t, ch, "attack gevent", func(r broadcastRec) bool {
 		return r.msg["t"] == "gevent" && r.msg["id"] == slimeID && r.msg["name"] == "hit"
 	})
 	data, _ := rec.msg["data"].(map[string]any)
 	if math.Hypot(num2(data["x"])-6, num2(data["z"])-0) > 0.1 {
 		t.Errorf("attack data = %v, want ≒(6, 0)", data)
+	}
+	if data["target"] != "alice" || num2(data["damage"]) != 10 {
+		t.Errorf("attack target/damage = %v/%v, want alice/10", data["target"], data["damage"])
 	}
 
 	// bob(7,1)が斬撃 → hp減少+対象がbobに切り替わり移動方向が変わる
@@ -186,5 +198,49 @@ func TestSlimeSpawnChaseAttackAndDeath(t *testing.T) {
 	patches, _ := rec.msg["patches"].(map[string]any)
 	if _, stale := patches[slimeID]; stale {
 		t.Error("despawn済みスライムの累積patchはgsnapから消えるべき")
+	}
+}
+
+// 戦闘不能(pos.dead)のプレイヤーはplayersPayloadから消え、
+// スライムは範囲内の別プレイヤーへ自然にretargetする(wasm側は無変更で成立)
+func TestSlimeIgnoresDeadPlayer(t *testing.T) {
+	session, ch := newSlimeSession(t)
+	const slimeID = "slime-button-s1"
+
+	// alice(1,0)が召喚。スポーン地点(2,0)から1.0m=攻撃範囲内なので即攻撃される
+	session.HandleMessage("alice", posMsg(1, 0))
+	session.HandleMessage("alice", interactMsg("slime-button"))
+	isHit := func(r broadcastRec) bool {
+		return r.msg["t"] == "gevent" && r.msg["id"] == slimeID && r.msg["name"] == "hit"
+	}
+	rec := waitFor(t, ch, "attack alice", isHit)
+	data, _ := rec.msg["data"].(map[string]any)
+	if data["target"] != "alice" {
+		t.Fatalf("target = %v, want alice", data["target"])
+	}
+
+	// bobが範囲内(4m)に入り、aliceが戦闘不能を自己申告
+	// → aliceが索敵から消え、次の対象はbobになる
+	session.HandleMessage("bob", posMsg(2, 4))
+	session.HandleMessage("alice", deadPosMsg(1, 0))
+	rec = waitFor(t, ch, "attack bob", func(r broadcastRec) bool {
+		if !isHit(r) {
+			return false
+		}
+		d, _ := r.msg["data"].(map[string]any)
+		return d["target"] == "bob"
+	})
+	data, _ = rec.msg["data"].(map[string]any)
+	if math.Hypot(num2(data["x"])-2, num2(data["z"])-4) > 0.1 {
+		t.Errorf("attack data = %v, want ≒(2, 4)", data)
+	}
+
+	// aliceが復活(dead無しのpos)しても対象はbobのまま
+	// (targetは対象の消滅・被弾でのみ切り替わる仕様)
+	session.HandleMessage("alice", posMsg(1, 0))
+	rec = waitFor(t, ch, "attack bob after alice revived", isHit)
+	data, _ = rec.msg["data"].(map[string]any)
+	if data["target"] != "bob" {
+		t.Errorf("target = %v, want bob (復活したaliceに切り替わるべきではない)", data["target"])
 	}
 }

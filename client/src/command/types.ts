@@ -13,6 +13,8 @@ export interface GameCommandAPI {
   jump(): boolean
   /** targetは向き合わせ・方向スキルの狙い先。tidは対象指定スキルの対象ノードid */
   performAction(name: string, target?: { x: number; z: number }, tid?: string): void
+  /** スポーン地点で復活する。戦闘不能でなければthrow(コマンド側で表示) */
+  respawn(): void
   playEmote(id: string): Promise<void>
   setCameraFollow(mode: 'on' | 'off' | 'toggle'): void
   snapCamera(): void

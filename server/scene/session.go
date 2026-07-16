@@ -59,8 +59,14 @@ type Session struct {
 	listeners map[string]map[string][]*script
 	scripts   []*script
 	env       *hostEnv
-	// positions は参加者の最新位置(interactの距離検証用)
-	positions map[string]struct{ x, z float64 }
+	// positions は参加者の最新位置(interactの距離検証用)と生死の自己申告
+	positions map[string]playerState
+}
+
+// playerState は参加者の自己申告状態。deadの検証はしない(厳密さより自由の方針)
+type playerState struct {
+	x, z float64
+	dead bool
 }
 
 // NewSession はワールドのスクリプトをロード・初期化してセッションを開始する。
@@ -76,7 +82,7 @@ func NewSession(def *world.Def, runtime *Runtime, broadcast func(data []byte, to
 		childrenOf: map[string][]string{},
 		patches:    map[string]map[string]any{},
 		listeners:  map[string]map[string][]*script{},
-		positions:  map[string]struct{ x, z float64 }{},
+		positions:  map[string]playerState{},
 	}
 	for i := range def.Scene {
 		node := &def.Scene[i]
@@ -199,7 +205,7 @@ func (s *Session) HandleMessage(sender string, data []byte) {
 	}
 	switch msg.T {
 	case "pos":
-		s.enqueue(func() { s.positions[sender] = struct{ x, z float64 }{msg.X, msg.Z} })
+		s.enqueue(func() { s.positions[sender] = playerState{msg.X, msg.Z, msg.Dead} })
 	case "act":
 		s.enqueue(func() { s.handleAct(sender, msg) })
 	case "ginput":
@@ -499,6 +505,10 @@ func (s *Session) playersPayload() []byte {
 	players := make([]player, 0, len(ids))
 	for _, id := range ids {
 		pos := s.positions[id]
+		// 戦闘不能者はスクリプトから見えない(スライム等が自然にretargetする)
+		if pos.dead {
+			continue
+		}
 		players = append(players, player{ID: id, X: pos.x, Z: pos.z})
 	}
 	return mustJSON(map[string]any{"players": players})

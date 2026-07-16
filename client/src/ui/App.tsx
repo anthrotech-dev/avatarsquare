@@ -11,6 +11,7 @@ import { HudElement } from './hud/HudElement'
 import { LoadingOverlay } from './hud/LoadingOverlay'
 import { MainMenu, useEscMenu } from './hud/MainMenu'
 import { PlayersWindow } from './hud/PlayersWindow'
+import { ReviveDialog } from './hud/ReviveDialog'
 import { SettingsWindow } from './hud/SettingsPanel'
 import { StatusPanel } from './hud/StatusPanel'
 import { TargetPanel } from './hud/TargetPanel'
@@ -131,6 +132,7 @@ export function App() {
         }}
       />
       {dragging && <div className="drop-cover">VRMファイルをドロップ</div>}
+      <ReviveDialog />
       <LoadingOverlay />
     </div>
   )

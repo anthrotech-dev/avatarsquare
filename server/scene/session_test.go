@@ -311,15 +311,17 @@ func TestApplyEventIgnoresUnknownNode(t *testing.T) {
 }
 
 func TestPlayersPayloadSorted(t *testing.T) {
-	s := &Session{positions: map[string]struct{ x, z float64 }{
+	s := &Session{positions: map[string]playerState{
 		"zoe":   {x: 3, z: 4},
 		"alice": {x: 1, z: 2},
+		"bob":   {x: 5, z: 6, dead: true},
 	}}
+	// bobは戦闘不能なのでスクリプトから見えない
 	want := `{"players":[{"id":"alice","x":1,"z":2},{"id":"zoe","x":3,"z":4}]}`
 	if got := string(s.playersPayload()); got != want {
 		t.Errorf("payload = %s, want %s", got, want)
 	}
-	s.positions = map[string]struct{ x, z float64 }{}
+	s.positions = map[string]playerState{}
 	if got := string(s.playersPayload()); got != `{"players":[]}` {
 		t.Errorf("empty payload = %s", got)
 	}

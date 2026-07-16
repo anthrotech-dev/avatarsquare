@@ -94,6 +94,11 @@ interface AppState {
   position: { x: number; z: number }
   /** 選択中のターゲット(未選択はnull)。TargetPanelが購読する */
   target: TargetInfo | null
+  /** 自分のHP(正はGame。HUD表示用スナップショット)。Game.tsのPLAYER_MAX_HPと対応 */
+  selfHp: number
+  selfHpMax: number
+  /** 戦闘不能中(復活ダイアログの表示条件) */
+  dead: boolean
   /** 全ホットバー(非アクティブ=表示から削除済みの設定も保持する) */
   hotbars: HotbarData[]
   chatLog: ChatEntry[]
@@ -156,6 +161,8 @@ interface AppState {
   setDispatch: (dispatch: AppState['dispatch']) => void
   setPosition: (position: { x: number; z: number }) => void
   setTarget: (target: TargetInfo | null) => void
+  setSelfHp: (selfHp: number, selfHpMax: number) => void
+  setDead: (dead: boolean) => void
   setHotbarSlot: (ref: SlotRef, slot: HotbarSlot | null) => void
   swapHotbarSlots: (a: SlotRef, b: SlotRef) => void
   setHotbarKey: (ref: SlotRef, bind: SlotKeybind | null) => void
@@ -211,6 +218,9 @@ export const useAppStore = create<AppState>((set) => ({
   dispatch: null,
   position: { x: 0, z: 0 },
   target: null,
+  selfHp: 100,
+  selfHpMax: 100,
+  dead: false,
   hotbars: loadHotbars(),
   chatLog: [],
   macrosVersion: 0,
@@ -283,6 +293,8 @@ export const useAppStore = create<AppState>((set) => ({
       }
       return { target }
     }),
+  setSelfHp: (selfHp, selfHpMax) => set({ selfHp, selfHpMax }),
+  setDead: (dead) => set({ dead }),
   setHotbarSlot: (ref, slot) =>
     set((state) => {
       const hotbars = updateHotbar(state.hotbars, ref.seq, (h) => {

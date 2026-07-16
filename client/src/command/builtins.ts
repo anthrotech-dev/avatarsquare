@@ -113,6 +113,14 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       },
     },
     {
+      name: 'respawn',
+      description: 'スポーン地点で復活する(戦闘不能時のみ)',
+      execute(ctx) {
+        ctx.api.respawn()
+        ctx.out.print('復活しました')
+      },
+    },
+    {
       name: 'attack',
       aliases: ['slash'],
       description: '選択中の対象を斬りつける(未選択ならカーソル直下を自動選択)',

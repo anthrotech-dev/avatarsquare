@@ -78,6 +78,39 @@ export class AnimationController {
     this.mixer.addEventListener('finished', onFinished)
   }
 
+  /**
+   * クリップを1回再生し、最終フレームで静止し続ける(戦闘不能など)。
+   * releaseHoldするまでロコモーションに戻らない。
+   */
+  playHold(name: string): void {
+    const clip = this.clips.get(name)
+    if (!clip) return
+
+    if (this.oneShot) {
+      this.oneShot.fadeOut(ONESHOT_FADE)
+      this.oneShot = null
+    }
+
+    const action = this.mixer.clipAction(clip)
+    action.reset()
+    action.setLoop(THREE.LoopOnce, 1)
+    action.clampWhenFinished = true
+    this.currentAction?.fadeOut(ONESHOT_FADE)
+    this.currentAction = null
+    this.currentName = null
+    action.fadeIn(ONESHOT_FADE).play()
+    // finishedリスナーを付けずoneShotを保持し続ける=setLocomotionが上書きしない
+    this.oneShot = action
+  }
+
+  /** playHoldの解除。ロコモーション(desiredLoop)へ復帰する */
+  releaseHold(): void {
+    if (!this.oneShot) return
+    this.oneShot.fadeOut(CROSS_FADE)
+    this.oneShot = null
+    if (this.desiredLoop) this.playLoopInternal(this.desiredLoop)
+  }
+
   update(delta: number): void {
     this.mixer.update(delta)
   }

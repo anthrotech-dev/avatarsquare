@@ -15,6 +15,7 @@ export function makeTestContext(overrides: Partial<GameCommandAPI> = {}): {
     stop: vi.fn(),
     jump: vi.fn(() => true),
     performAction: vi.fn(),
+    respawn: vi.fn(),
     playEmote: vi.fn(async () => {}),
     setCameraFollow: vi.fn(),
     snapCamera: vi.fn(),

@@ -142,6 +142,32 @@ export function buildShootClip(vrm: VRM): THREE.AnimationClip {
   ])
 }
 
+export function buildDeathClip(vrm: VRM): THREE.AnimationClip {
+  const d = 0.9
+  // 後ろ向きに倒れて仰向けで静止する(playHoldで最終フレーム維持を想定)
+  const fall = (p: number) => easeOut(clamp01(p / 0.75))
+  const clip = oneShotClip(vrm, 'death', d, [
+    ['hips', (p) => new THREE.Euler(-1.45 * fall(p), 0, 0)],
+    ['spine', (p) => new THREE.Euler(-0.15 * fall(p), 0, 0)],
+    ['leftUpperArm', (p) => new THREE.Euler(0, 0, -ARM_REST_Z + 0.35 * fall(p))],
+    ['rightUpperArm', (p) => new THREE.Euler(0, 0, ARM_REST_Z - 0.35 * fall(p))],
+  ])
+  // 回転だけだと腰の高さで浮くため、hips座標も地面近くへ下ろす
+  const hips = vrm.humanoid.getNormalizedBoneNode('hips')
+  if (hips) {
+    const base = hips.position
+    const times: number[] = []
+    const values: number[] = []
+    for (let i = 0; i <= SAMPLES; i++) {
+      const p = i / SAMPLES
+      times.push(p * d)
+      values.push(base.x, base.y + (0.12 - base.y) * fall(p), base.z)
+    }
+    clip.tracks.push(new THREE.VectorKeyframeTrack(`${hips.name}.position`, times, values))
+  }
+  return clip
+}
+
 /** アクション用フォールバッククリップ一式。外部素材を登録すれば差し替わる */
 export function buildActionClips(vrm: VRM): Array<[string, THREE.AnimationClip]> {
   return [

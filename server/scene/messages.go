@@ -25,6 +25,8 @@ type incomingMessage struct {
 	Action string `json:"action"`
 	// act: 対象指定スキルの対象ノードid
 	Tid string `json:"tid"`
+	// pos: 戦闘不能中の自己申告(省略時false=生存)
+	Dead bool `json:"dead"`
 }
 
 type patchMessage struct {

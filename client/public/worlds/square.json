@@ -732,6 +732,7 @@
         "aggroRange": 6,
         "attackRange": 1.0,
         "attackMs": 2000,
+        "damage": 10,
         "image": "square/slime.png",
         "spawnOffset": [
           2,

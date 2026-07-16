@@ -6,7 +6,8 @@
 //! ```jsonc
 //! { "id": "slime-button", "kind": "cylinder", "interactable": true, ...,
 //!   "slime": { "hp": 30, "speed": 1.2, "aggroRange": 6, "attackRange": 1.0,
-//!              "attackMs": 2000, "image": "square/slime.png", "spawnOffset": [2, 0] } }
+//!              "attackMs": 2000, "damage": 10, "image": "square/slime.png",
+//!              "spawnOffset": [2, 0] } }
 //! ```
 //! スライム本体はかかしと同じエンティティ規約(親group: targetable/name/hp/hpMax、
 //! 子: sprite+バインドbar)で動的にspawnする。同時数の上限は設けない
@@ -29,6 +30,7 @@ struct Button {
     aggro_range: f64,
     attack_range: f64,
     attack_ms: i64,
+    damage: i64,
     image: String,
     spawn_offset: (f64, f64),
     /// スポーンの連番(id採番用。セッション寿命で単調増加)
@@ -47,6 +49,7 @@ struct Slime {
     aggro_range: f64,
     attack_range: f64,
     attack_ms: i64,
+    damage: i64,
 }
 
 #[derive(Default)]
@@ -99,6 +102,7 @@ impl SlimeGimmick {
                 aggro_range: button.aggro_range,
                 attack_range: button.attack_range,
                 attack_ms: button.attack_ms,
+                damage: button.damage,
             },
         );
     }
@@ -129,6 +133,7 @@ impl Script for SlimeGimmick {
                     aggro_range: config["aggroRange"].as_f64().unwrap_or(6.0),
                     attack_range: config["attackRange"].as_f64().unwrap_or(1.0),
                     attack_ms: config["attackMs"].as_i64().unwrap_or(2000),
+                    damage: config["damage"].as_i64().unwrap_or(10).max(0),
                     image: config["image"].as_str().unwrap_or("").to_string(),
                     spawn_offset: (off(0).unwrap_or(2.0), off(1).unwrap_or(0.0)),
                     seq: 0,
@@ -201,16 +206,26 @@ impl Script for SlimeGimmick {
             if dist > slime.attack_range {
                 // 攻撃範囲の境界で止まる(行き過ぎて震えない)
                 let step = (slime.speed * dt as f64 / 1000.0).min(dist - slime.attack_range);
-                if step > 1e-4 {
+                if step > 1e-3 {
                     slime.x = round3(slime.x + dx / dist * step);
                     slime.z = round3(slime.z + dz / dist * step);
                     patch(id, json!({ "x": slime.x, "z": slime.z }));
                 }
             }
-            if dist <= slime.attack_range + 1e-6 && slime.attack_cd <= 0 {
+            // 許容誤差は座標のround3(±0.0007)と移動打ち切り(1e-3)より大きく取る。
+            // 小さいと境界で止まったまま永遠に攻撃できないことがある
+            if dist <= slime.attack_range + 3e-3 && slime.attack_cd <= 0 {
                 slime.attack_cd = slime.attack_ms;
-                // 近接攻撃(演出のみ): 対象プレイヤーの足元にhitエフェクトを出す
-                event(id, "hit", json!({ "x": round3(player.x), "z": round3(player.z) }));
+                // 近接攻撃: 足元のhitエフェクトに加え、対象identityとダメージ量を
+                // 同梱する(対象クライアントが自分のHPを減らす。クライアント権威)
+                event(
+                    id,
+                    "hit",
+                    json!({
+                        "x": round3(player.x), "z": round3(player.z),
+                        "target": player.id, "damage": slime.damage
+                    }),
+                );
             }
         }
     }

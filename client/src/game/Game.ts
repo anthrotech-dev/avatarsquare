@@ -65,6 +65,8 @@ const PAN_LIMIT = 28 // 視点移動できる範囲(マップ端まで)
 const SELF_RING_ID = '__self'
 /** クリックインタラクトが届く距離(m)。サーバー側の検証(3m)より少し狭い */
 const INTERACT_RANGE = 2.5
+/** 自分の最大HP。HPはクライアント権威(自分のHPは自分が管理する)。store初期値と対応 */
+const PLAYER_MAX_HP = 100
 
 interface ClickMarker {
   mesh: THREE.Mesh
@@ -112,6 +114,10 @@ export class Game {
   private lastSentName = ''
   /** 自分のidentity。名前未設定時のチャットログ表示にフォールバックとして使う */
   private identity = ''
+  /** 自分のHP(クライアント権威)。storeへはHUD表示用のスナップショットを流す */
+  private selfHp = PLAYER_MAX_HP
+  /** 戦闘不能中。移動・アクション等を止め、復活(respawn)で解除する */
+  private dead = false
   /** 現在発話中のリモート参加者(SFU判定)。差分でネームプレート表示を切り替える */
   private speakingIds = new Set<string>()
   /** 自分の発話中(ローカルのマイク音量による即時判定) */
@@ -277,6 +283,12 @@ export class Game {
     this.avatar.setPath([])
     this.avatar.position.set(world.spawn.x, 0, world.spawn.z)
     this.focus.copy(this.avatar.position)
+    // 戦闘不能のままワールドを切り替えた場合は全快で入り直す
+    this.dead = false
+    this.selfHp = PLAYER_MAX_HP
+    this.avatar.setDead(false)
+    useAppStore.getState().setSelfHp(this.selfHp, PLAYER_MAX_HP)
+    useAppStore.getState().setDead(false)
     useAppStore.getState().setWorld({ id: world.id, name: world.name })
   }
 
@@ -372,6 +384,11 @@ export class Game {
         if (this.selectedTargetId) this.pushTargetToStore()
         break
       case 'gevent': {
+        // 対象が自分のhitは実ダメージ(geventは__world発の検証済み経路でしか届かない)
+        if (message.name === 'hit' && message.data?.target === this.identity) {
+          const damage = Number(message.data.damage)
+          if (Number.isFinite(damage) && damage > 0) this.applyDamage(damage)
+        }
         // 演出イベントは名前をエフェクトkindに対応させる(未知kindはEffectSystemが
         // 無視するので前方互換)。座標はdataのx/zがあればそれ、無ければノード位置
         const kind = message.name === 'hit' ? 'hitflash' : message.name
@@ -388,6 +405,42 @@ export class Game {
         break
       }
     }
+  }
+
+  /**
+   * 自分への被弾。戦闘不能中の追撃(サーバーの除外が効くまでのラグや
+   * 複数体の同時攻撃)は無視する
+   */
+  private applyDamage(damage: number): void {
+    if (this.dead) return
+    this.selfHp = Math.max(0, this.selfHp - damage)
+    useAppStore.getState().setSelfHp(this.selfHp, PLAYER_MAX_HP)
+    if (this.selfHp === 0) this.die()
+  }
+
+  /** HP0で戦闘不能になる。移動を止めて倒れ、復活ダイアログを出す */
+  private die(): void {
+    this.dead = true
+    this.avatar.setDead(true)
+    const store = useAppStore.getState()
+    store.setDead(true)
+    store.appendChat({ kind: 'system', text: '倒れました。/respawn で復活できます' })
+    // 次のpos送信からdead=trueが伝わり、サーバーがスクリプトの索敵から除外する
+  }
+
+  /** スポーン地点で復活する(戦闘不能時のみ)。HP全快で死亡状態を解除する */
+  respawn(): void {
+    if (!this.dead) throw new Error('戦闘不能ではありません')
+    this.dead = false
+    this.selfHp = PLAYER_MAX_HP
+    this.avatar.setDead(false)
+    this.avatar.setPath([])
+    if (this.world) this.avatar.position.set(this.world.spawn.x, 0, this.world.spawn.z)
+    // カメラ追従OFFでも復帰位置を見失わないようにスナップする
+    this.focus.copy(this.avatar.position)
+    const store = useAppStore.getState()
+    store.setSelfHp(this.selfHp, PLAYER_MAX_HP)
+    store.setDead(false)
   }
 
   /**
@@ -502,6 +555,7 @@ export class Game {
    * 無駄な送信を避けるため対象と距離をクライアントでも確認する
    */
   interactNode(id: string): void {
+    if (this.dead) throw new Error('戦闘不能です。/respawn で復活してください')
     const node = this.sceneRenderer?.getNode(id)
     if (!node?.interactable) throw new Error(`「${id}」はインタラクトできません`)
     const x = typeof node.x === 'number' ? node.x : 0
@@ -764,6 +818,11 @@ export class Game {
   /** 配信元(R2)のVRMAをエモートとして再生する(初回のみ取得) */
   async playEmote(id: string): Promise<void> {
     const { setStatus } = useAppStore.getState()
+    // エモートは倒れ姿勢(playHold)を上書きしてしまうため戦闘不能中は禁止
+    if (this.dead) {
+      setStatus('戦闘不能中はエモートできません')
+      return
+    }
     if (!this.avatar.hasVRM) {
       setStatus('先にVRMを読み込んでください')
       return
@@ -814,6 +873,7 @@ export class Game {
     jump: () => this.avatar.jump(),
     performAction: (name, target, tid) => this.performAction(name, target, tid),
     playEmote: (id) => this.playEmote(id),
+    respawn: () => this.respawn(),
     setCameraFollow: (mode) => this.setCameraFollow(mode),
     snapCamera: () => {
       this.focus.copy(this.avatar.position)
@@ -877,8 +937,9 @@ export class Game {
     },
   }
 
-  /** A*経路探索して移動を開始する。到達不能(またはワールド未読込)ならfalse */
+  /** A*経路探索して移動を開始する。戦闘不能中・到達不能(またはワールド未読込)ならfalse */
   moveTo(x: number, z: number): boolean {
+    if (this.dead) return false
     if (!this.navGrid) return false
     const path = this.navGrid.findPath(
       { x: this.avatar.position.x, z: this.avatar.position.z },
@@ -904,6 +965,8 @@ export class Game {
       z: this.avatar.position.z,
       yaw: this.avatar.yaw,
       moving: this.avatar.isMoving,
+      // 生存中は省略(旧クライアント互換)。サーバーはdead中の自分を索敵から外す
+      ...(this.dead ? { dead: true } : {}),
     })
   }
 
@@ -917,6 +980,7 @@ export class Game {
    * VRM未読込でもエフェクトだけは成立させる(クリップ再生は自動でスキップ)。
    */
   performAction(name: string, target?: { x: number; z: number }, tid?: string): void {
+    if (this.dead) return
     const action = this.actions.get(name)
     if (!action) return
     if (action.stopsMovement) this.avatar.setPath([])
