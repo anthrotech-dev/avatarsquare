@@ -119,7 +119,41 @@ class ShotEffect implements EffectInstance {
   }
 }
 
+const HITFLASH_LIFETIME = 0.35
+
+/** 被弾地点で赤いリングが弾ける(サーバーのgevent hit由来の演出) */
+class HitFlashEffect implements EffectInstance {
+  private readonly mesh: THREE.Mesh
+  private age = 0
+
+  constructor(
+    spawn: EffectSpawn,
+    private readonly scene: THREE.Scene,
+  ) {
+    this.mesh = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.5, 24), acquireFlatMaterial(0xff5e4a))
+    this.mesh.rotation.x = -Math.PI / 2
+    this.mesh.position.set(spawn.x, 0.08, spawn.z)
+    scene.add(this.mesh)
+  }
+
+  update(delta: number): boolean {
+    this.age += delta
+    const t = this.age / HITFLASH_LIFETIME
+    if (t >= 1) return false
+    this.mesh.scale.setScalar(0.5 + t * 1.8)
+    ;(this.mesh.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - t)
+    return true
+  }
+
+  dispose(): void {
+    this.scene.remove(this.mesh)
+    this.mesh.geometry.dispose()
+    releaseFlatMaterial(this.mesh.material as THREE.MeshBasicMaterial)
+  }
+}
+
 export function registerBuiltinEffects(system: EffectSystem): void {
   system.register('slash', (spawn, scene) => new SlashEffect(spawn, scene))
   system.register('shot', (spawn, scene) => new ShotEffect(spawn, scene))
+  system.register('hitflash', (spawn, scene) => new HitFlashEffect(spawn, scene))
 }

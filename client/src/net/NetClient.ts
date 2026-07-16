@@ -1,6 +1,6 @@
 import { type RemoteParticipant, type RemoteTrack, Room, RoomEvent, Track } from 'livekit-client'
 import { getTokenEndpoint } from './config'
-import { decodeMessage, encodeMessage, type GameMessage } from './protocol'
+import { decodeMessage, encodeMessage, type GameMessage, isSystemId } from './protocol'
 import { getVoiceAudioContext, VoiceChat, type VoiceChatCallbacks } from './VoiceChat'
 
 export interface NetEvents {
@@ -51,7 +51,11 @@ export class NetClient {
     // Roomイベントを取りこぼさないよう、connect前に生成してリスナーを張る
     const voice = new VoiceChat(room, voiceCallbacks)
 
-    const notifyPeers = () => events.onPeersChanged(room.remoteParticipants.size)
+    // システム参加者(ワールドボット等)は人数に数えない
+    const notifyPeers = () =>
+      events.onPeersChanged(
+        [...room.remoteParticipants.values()].filter((p) => !isSystemId(p.identity)).length,
+      )
 
     room
       .on(RoomEvent.TrackSubscribed, (remote: RemoteTrack, _pub, participant) => {

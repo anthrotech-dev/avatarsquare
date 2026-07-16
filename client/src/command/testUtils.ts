@@ -36,6 +36,7 @@ export function makeTestContext(overrides: Partial<GameCommandAPI> = {}): {
     getWorlds: vi.fn(() => []),
     getCurrentWorld: vi.fn(() => null),
     switchWorld: vi.fn(async () => {}),
+    interact: vi.fn(),
     focusChat: vi.fn(),
     openVrmPicker: vi.fn(),
     clearVrmCache: vi.fn(),

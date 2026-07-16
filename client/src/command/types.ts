@@ -55,6 +55,11 @@ export interface GameCommandAPI {
   getCurrentWorld(): { id: string; name: string } | null
   /** 別ワールドへ移動する。取得失敗はthrow(コマンド側で表示) */
   switchWorld(id: string): Promise<void>
+  /**
+   * シーンノードへのインタラクト(結果はサーバー権威のgpatchで返る)。
+   * 対象がない・インタラクト不可・離れすぎはthrow(コマンド側で表示)
+   */
+  interact(id: string): void
   /** チャット入力欄にフォーカスする */
   focusChat(): void
   /** VRMファイル選択ダイアログを開く */

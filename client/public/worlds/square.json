@@ -659,7 +659,57 @@
       "w": 1.265,
       "h": 2.09,
       "collider": 0.66
+    },
+    {
+      "id": "scarecrow",
+      "kind": "sprite",
+      "image": "square/scarecrow.png",
+      "x": -6,
+      "z": -3,
+      "w": 1.2,
+      "h": 1.6,
+      "collider": 0.5,
+      "scarecrow": {
+        "hp": 100,
+        "respawnMs": 5000,
+        "bar": "scarecrow-hp"
+      }
+    },
+    {
+      "id": "scarecrow-hp",
+      "kind": "bar",
+      "x": -6,
+      "z": -3,
+      "y": 2.0,
+      "w": 1.2,
+      "h": 0.16,
+      "value": 1
+    },
+    {
+      "id": "counter-button",
+      "kind": "cylinder",
+      "x": 4,
+      "z": 9,
+      "r": 0.4,
+      "h": 0.3,
+      "color": "#cc3333",
+      "collider": 0.5,
+      "interactable": true,
+      "counter": {
+        "label": "counter-label"
+      }
+    },
+    {
+      "id": "counter-label",
+      "kind": "text",
+      "x": 4,
+      "z": 9,
+      "y": 1.5,
+      "text": "0"
     }
   ],
-  "scripts": []
+  "scripts": [
+    "../gimmicks/scarecrow.wasm",
+    "../gimmicks/counter.wasm"
+  ]
 }

@@ -269,6 +269,22 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       },
     },
     {
+      name: 'interact',
+      description: '近くのオブジェクト(ボタン等)にインタラクトする',
+      usage: '/interact <id>',
+      execute(ctx, args) {
+        if (!args[0]) {
+          ctx.out.error('使い方: /interact <id>')
+          return
+        }
+        try {
+          ctx.api.interact(args[0])
+        } catch (err) {
+          ctx.out.error(err instanceof Error ? err.message : String(err))
+        }
+      },
+    },
+    {
       name: 'macro',
       aliases: ['m'],
       description: 'マクロを実行する',
