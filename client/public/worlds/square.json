@@ -706,6 +706,25 @@
       "z": 9,
       "y": 1.5,
       "text": "0"
+    },
+    {
+      "id": "portal-island",
+      "kind": "sprite",
+      "image": "portal.png",
+      "x": 12,
+      "z": 2,
+      "w": 1.6,
+      "h": 2.2,
+      "interactable": true,
+      "portal": "island"
+    },
+    {
+      "id": "portal-island-label",
+      "kind": "text",
+      "x": 12,
+      "z": 2,
+      "y": 2.6,
+      "text": "→ 南の小島"
     }
   ],
   "scripts": [

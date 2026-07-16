@@ -44,9 +44,10 @@ wasmスクリプト(Rust製、`gimmicks/`)のURLです。
 - サーバーは環境変数`WORLD_URLS`(カンマ区切り)で信頼できるワールドJSONのURLを指定して起動する。
   各ワールドのLiveKitルームにボット(`__world`)として常駐し、wasmスクリプトを実行して
   ギミック状態(かかしのHP・ボタンのカウンター等)をサーバー権威で同期する
-- `/world`でワールド一覧、`/world <id>`で移動(ロード画面を挟んで再接続)
+- `/world`でワールド一覧、`/world <id>`で移動(ロード画面を挟んで再接続)。
+  ワールド内のポータル(`portal: "<行き先id>"`属性を持つノード)を左クリックしても移動できる
 - ボタン等のインタラクト可能なオブジェクトは左クリック(または`/interact <id>`)
-- squareワールドの生成器は`client/scripts/generate-square/`、
+- ワールドの生成器は`client/scripts/generate-square/`・`generate-island/`、
   wasmスクリプトのビルドは`gimmicks/build.sh`(成果物はコミット済みなのでRust無しでも動く)
 - ローカル開発: `WORLD_URLS='http://localhost:5174/worlds/square.json' go run .`(server/にて。
   viteのポートは環境に合わせる)

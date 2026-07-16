@@ -83,6 +83,26 @@ describe('getObstacles / hitsObstacle', () => {
   })
 })
 
+describe('islandワールド(生成物)', () => {
+  const url = new URL('../../public/worlds/island.json', import.meta.url)
+  const world = parseWorld(JSON.parse(readFileSync(url, 'utf-8')))
+  const grid = buildNavGrid(world)
+
+  it('海はキーホールポリゴン1つで表現され、島の中だけ歩ける', () => {
+    expect(grid.isWalkableAt(world.spawn.x, world.spawn.z)).toBe(true) // 島中央(スポーン)
+    expect(grid.isWalkableAt(8, 0)).toBe(true) // 島の砂地
+    expect(grid.isWalkableAt(25, 25)).toBe(false) // 沖(ポリゴンの中=海)
+    expect(grid.isWalkableAt(-25, 0)).toBe(false) // 西の沖
+    expect(grid.isWalkableAt(0, -25)).toBe(false) // 北の沖
+  })
+
+  it('ポータルで行き来できる構成になっている(両ワールドにportal属性ノード)', () => {
+    const portal = world.scene.find((n) => n.portal !== undefined)
+    expect(portal?.portal).toBe('square')
+    expect(portal?.interactable).toBe(true)
+  })
+})
+
 describe('squareワールド(生成物)', () => {
   const world = loadSquareWorld()
   const grid = buildNavGrid(world)
@@ -100,5 +120,11 @@ describe('squareワールド(生成物)', () => {
     expect(grid.isWalkableAt(15, 0)).toBe(true) // 砂浜
     expect(grid.isWalkableAt(-22, -16)).toBe(false) // 木(tree-1)
     expect(grid.isWalkableAt(-29.8, 0)).toBe(false) // マップ外周
+  })
+
+  it('島へのポータルがある', () => {
+    const portal = world.scene.find((n) => n.portal !== undefined)
+    expect(portal?.portal).toBe('island')
+    expect(portal?.interactable).toBe(true)
   })
 })

@@ -27,7 +27,7 @@ spec:
               value: "wss://livekit.anthrotech.dev"
             # 提供するワールドJSONのURL(カンマ区切り)。信頼できるワールドだけを列挙する。
             - name: WORLD_URLS
-              value: "https://avatarsquare.anthrotech.dev/worlds/square.json"
+              value: "https://avatarsquare.anthrotech.dev/worlds/square.json,https://avatarsquare.anthrotech.dev/worlds/island.json"
           envFrom:
             # LIVEKIT_API_KEY / LIVEKIT_API_SECRET を含む(secret.example.yaml参照)
             - secretRef:

@@ -356,6 +356,12 @@ export class Game {
     const z = typeof node.z === 'number' ? node.z : 0
     const distance = Math.hypot(x - this.avatar.position.x, z - this.avatar.position.z)
     if (distance > INTERACT_RANGE) throw new Error('離れすぎています。近づいてください')
+    // ポータル(portal属性=行き先ワールドid)はクライアント側でワールド切替する。
+    // サーバーのwasmスクリプトは関与しない(切替失敗は/interactのcatchで表示される)
+    if (typeof node.portal === 'string') {
+      void this.switchWorld(node.portal)
+      return
+    }
     this.net.sendReliable({ t: 'ginput', id, action: 'interact' }, [WORLD_BOT_ID])
   }
 

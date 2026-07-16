@@ -502,6 +502,23 @@ function buildWorldJson(): string {
     { id: 'counter-label', kind: 'text', x: 4, z: 9, y: 1.5, text: '0' },
   )
 
+  // 南の小島へのポータル(東の砂浜への道の先)。portal属性はクライアントが解釈して
+  // ワールド切替する(画像はワールド間共有の /worlds/portal.png、island生成器が出力)
+  scene.push(
+    {
+      id: 'portal-island',
+      kind: 'sprite',
+      image: 'portal.png',
+      x: 12,
+      z: 2,
+      w: 1.6,
+      h: 2.2,
+      interactable: true,
+      portal: 'island',
+    },
+    { id: 'portal-island-label', kind: 'text', x: 12, z: 2, y: 2.6, text: '→ 南の小島' },
+  )
+
   const world = {
     version: 1,
     id: 'square',
