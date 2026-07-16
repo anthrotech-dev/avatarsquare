@@ -74,7 +74,6 @@ interface AppState {
   avatarName: string | null
   /** ユーザーが設定した表示名。空ならVRM名を代用する */
   playerName: string
-  status: string
   netStatus: string
   /** ワールド読込中のロード画面メッセージ(null=非表示) */
   worldLoading: string | null
@@ -151,7 +150,6 @@ interface AppState {
   removePlayer: (id: string) => void
   clearPlayers: () => void
   setPlayerName: (name: string) => void
-  setStatus: (status: string) => void
   setNetStatus: (netStatus: string) => void
   setWorldLoading: (worldLoading: string | null) => void
   setWorld: (world: { id: string; name: string } | null) => void
@@ -206,7 +204,6 @@ function updateHotbar(
 export const useAppStore = create<AppState>((set) => ({
   avatarName: null,
   playerName: loadPlayerName(),
-  status: '',
   netStatus: 'オフライン',
   worldLoading: null,
   world: null,
@@ -266,7 +263,6 @@ export const useAppStore = create<AppState>((set) => ({
     }
     set({ playerName })
   },
-  setStatus: (status) => set({ status }),
   setNetStatus: (netStatus) => set({ netStatus }),
   setWorldLoading: (worldLoading) => set({ worldLoading }),
   setWorld: (world) => set({ world }),

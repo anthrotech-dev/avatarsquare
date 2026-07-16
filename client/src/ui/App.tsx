@@ -4,6 +4,7 @@ import { Game } from '../game/Game'
 import { useAppStore } from '../state/store'
 import { ChatWindow } from './hud/ChatWindow'
 import { CommandPalette } from './hud/CommandPalette'
+import { ConnectionPanel } from './hud/ConnectionPanel'
 import { Hotbar } from './hud/Hotbar'
 import { HotbarConfig } from './hud/HotbarConfig'
 import { HudEditBanner } from './hud/HudEditBanner'
@@ -84,6 +85,9 @@ export function App() {
     >
       <HudElement id="status" label="ステータス">
         <StatusPanel />
+      </HudElement>
+      <HudElement id="connection" label="接続情報">
+        <ConnectionPanel />
       </HudElement>
       <HudElement id="target" label="ターゲット">
         <TargetPanel />

@@ -25,8 +25,8 @@ body,
 
 /* --- HUD共通 --- */
 
-.hud-status,
-.hud-target,
+.hud-unit,
+.hud-connection,
 .hud-chat,
 .hud-hotbar-slots,
 .hud-window {
@@ -48,6 +48,11 @@ body,
 
 .hud-anchor-status {
   top: 12px;
+  left: 12px;
+}
+
+.hud-anchor-connection {
+  top: 84px;
   left: 12px;
 }
 
@@ -108,59 +113,9 @@ body,
   font-size: 12px;
 }
 
-/* --- ステータス(左上) --- */
+/* --- ユニットフレーム(自分=左上 / ターゲット=上部中央 共通) --- */
 
-.hud-status {
-  padding: 10px 14px;
-  line-height: 1.6;
-  pointer-events: none;
-  user-select: none;
-}
-
-.hud-status-name {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.hud-status-line {
-  color: #a8b2c2;
-  font-size: 12px;
-}
-
-.hud-status-hpbar {
-  position: relative;
-  width: 150px;
-  height: 14px;
-  margin: 4px 0;
-  border-radius: 7px;
-  background: rgba(0, 0, 0, 0.45);
-  overflow: hidden;
-}
-
-.hud-status-hpfill {
-  height: 100%;
-  border-radius: 7px;
-  transition: width 0.15s ease-out;
-}
-
-.hud-status-hptext {
-  position: absolute;
-  inset: 0;
-  font-size: 10px;
-  line-height: 14px;
-  text-align: center;
-  color: #f2f5fa;
-  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
-}
-
-.hud-status-message {
-  color: #ffd479;
-  font-size: 12px;
-}
-
-/* --- ターゲット(上部中央) --- */
-
-.hud-target {
+.hud-unit {
   min-width: 180px;
   padding: 8px 14px;
   text-align: center;
@@ -168,28 +123,28 @@ body,
   user-select: none;
 }
 
-.hud-target-down {
+.hud-unit-down {
   opacity: 0.55;
 }
 
-.hud-target-empty {
+.hud-unit-empty {
   color: #a8b2c2;
   font-size: 12px;
 }
 
-.hud-target-name {
+.hud-unit-name {
   font-size: 14px;
   font-weight: 600;
 }
 
-.hud-target-state {
+.hud-unit-state {
   margin-left: 6px;
   color: #a8b2c2;
   font-size: 12px;
   font-weight: 400;
 }
 
-.hud-target-hpbar {
+.hud-unit-hpbar {
   position: relative;
   height: 14px;
   margin-top: 6px;
@@ -198,19 +153,33 @@ body,
   overflow: hidden;
 }
 
-.hud-target-hpfill {
+.hud-unit-hpfill {
   height: 100%;
   border-radius: 7px;
   transition: width 0.15s ease-out;
 }
 
-.hud-target-hptext {
+.hud-unit-hptext {
   position: absolute;
   inset: 0;
   font-size: 10px;
   line-height: 14px;
   color: #f2f5fa;
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+}
+
+/* --- 接続情報(左上ステータス直下) --- */
+
+.hud-connection {
+  padding: 10px 14px;
+  line-height: 1.6;
+  pointer-events: none;
+  user-select: none;
+}
+
+.hud-connection-line {
+  color: #a8b2c2;
+  font-size: 12px;
 }
 
 /* --- チャット(左下) --- */
@@ -503,9 +472,10 @@ body,
   background: #3a4a5f;
 }
 
+/* デフォルト位置はターゲットHUD(top:12px中央)と重ならないよう一段下げる */
 .hud-edit-banner {
   position: absolute;
-  top: 12px;
+  top: 76px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -517,6 +487,9 @@ body,
   color: #eaf1ff;
   font-size: 13px;
   z-index: 50;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
 }
 
 /* --- キーバインド設定 --- */

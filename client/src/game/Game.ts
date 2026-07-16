@@ -740,9 +740,10 @@ export class Game {
             this.syncPeerRing(id)
           },
           onPlaybackBlocked: () => {
-            useAppStore
-              .getState()
-              .setStatus('音声がブロックされています。画面をクリックすると再開します')
+            useAppStore.getState().appendChat({
+              kind: 'system',
+              text: '音声がブロックされています。画面をクリックすると再開します',
+            })
           },
         },
       )
@@ -780,17 +781,19 @@ export class Game {
   async loadVRMFile(file: File): Promise<void> {
     // 復元より先に立てる: 実行待ちの復元はこのフラグを見てスキップする
     this.userVRMRequested = true
-    const { setStatus, setAvatarName } = useAppStore.getState()
-    setStatus('VRMを読み込み中...')
+    const { appendChat, setAvatarName } = useAppStore.getState()
     try {
       const data = await file.arrayBuffer()
       const name = await this.queueVRMLoad(() => this.avatar.loadVRM(data))
       setAvatarName(name)
-      setStatus('')
+      appendChat({ kind: 'system', text: `VRM「${name}」を読み込みました` })
       // 成功したVRMだけをキャッシュする(次回リロード時に自動復元)
       void saveCachedVRM(data)
     } catch (err) {
-      setStatus(`読み込み失敗: ${err instanceof Error ? err.message : String(err)}`)
+      appendChat({
+        kind: 'error',
+        text: `読み込み失敗: ${err instanceof Error ? err.message : String(err)}`,
+      })
     }
   }
 
@@ -798,56 +801,60 @@ export class Game {
   private async restoreCachedVRM(): Promise<void> {
     const data = await loadCachedVRM()
     if (!data) return
-    const { setStatus, setAvatarName } = useAppStore.getState()
+    const { appendChat, setAvatarName } = useAppStore.getState()
     try {
       const name = await this.queueVRMLoad(async () => {
         if (this.disposed || this.userVRMRequested) return null
-        setStatus('前回のVRMを復元中...')
         return await this.avatar.loadVRM(data)
       })
       if (name === null) return
       setAvatarName(name)
-      setStatus('前回のVRMを復元しました')
+      appendChat({ kind: 'system', text: '前回のVRMを復元しました' })
     } catch {
       // 破損キャッシュはリロードの度に失敗し続けるため消す
       void clearCachedVRM()
-      setStatus('VRMキャッシュの復元に失敗したため削除しました')
+      appendChat({ kind: 'error', text: 'VRMキャッシュの復元に失敗したため削除しました' })
     }
   }
 
   /** 配信元(R2)のVRMAをエモートとして再生する(初回のみ取得) */
   async playEmote(id: string): Promise<void> {
-    const { setStatus } = useAppStore.getState()
+    const { appendChat } = useAppStore.getState()
     // エモートは倒れ姿勢(playHold)を上書きしてしまうため戦闘不能中は禁止
     if (this.dead) {
-      setStatus('戦闘不能中はエモートできません')
+      appendChat({ kind: 'error', text: '戦闘不能中はエモートできません' })
       return
     }
     if (!this.avatar.hasVRM) {
-      setStatus('先にVRMを読み込んでください')
+      appendChat({ kind: 'error', text: '先にVRMを読み込んでください' })
       return
     }
     try {
       await this.avatar.playEmote(id, emoteUrl(id))
     } catch (err) {
-      setStatus(`エモート失敗: ${err instanceof Error ? err.message : String(err)}`)
+      appendChat({
+        kind: 'error',
+        text: `エモート失敗: ${err instanceof Error ? err.message : String(err)}`,
+      })
     }
   }
 
   /** .vrma / .fbx をドロップした場合。ファイル名(拡張子除く)がクリップ名になる */
   async loadAnimationFile(file: File, kind: AnimationFileKind): Promise<void> {
-    const { setStatus } = useAppStore.getState()
+    const { appendChat } = useAppStore.getState()
     if (!this.avatar.hasVRM) {
-      setStatus('先にVRMを読み込んでください')
+      appendChat({ kind: 'error', text: '先にVRMを読み込んでください' })
       return
     }
     const name = file.name.replace(/\.[^.]+$/, '').toLowerCase()
-    setStatus(`アニメーション「${name}」を読み込み中...`)
     try {
       await this.avatar.loadAnimation(name, await file.arrayBuffer(), kind)
-      setStatus(`アニメーション「${name}」を登録しました`)
+      appendChat({ kind: 'system', text: `アニメーション「${name}」を登録しました` })
     } catch (err) {
-      setStatus(`読み込み失敗: ${err instanceof Error ? err.message : String(err)}`)
+      appendChat({
+        kind: 'error',
+        text: `読み込み失敗: ${err instanceof Error ? err.message : String(err)}`,
+      })
     }
   }
 
@@ -924,7 +931,9 @@ export class Game {
     openVrmPicker: () => useAppStore.getState().requestVrmPicker(),
     clearVrmCache: () => {
       void clearCachedVRM().then(() =>
-        useAppStore.getState().setStatus('キャッシュしたVRMを削除しました'),
+        useAppStore
+          .getState()
+          .appendChat({ kind: 'system', text: 'キャッシュしたVRMを削除しました' }),
       )
     },
     getRenderStats: () => {
@@ -1223,7 +1232,9 @@ export class Game {
     const voice = this.net.voice
     if (!voice) return
     const ok = await voice.switchMicDevice(deviceId).catch(() => false)
-    if (!ok) useAppStore.getState().setStatus('マイクの切り替えに失敗しました')
+    if (!ok) {
+      useAppStore.getState().appendChat({ kind: 'error', text: 'マイクの切り替えに失敗しました' })
+    }
   }
 
   private tick = (): void => {
