@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/tetratelabs/wazero"
@@ -19,6 +20,9 @@ const tickInterval = 100 * time.Millisecond
 // (READMEの方針: 厳密さより自由)。posが未着なら通す
 const interactRange = 3.0
 
+// maxSceneNodes はワールドあたりのノード数上限(暴走スクリプトの事故防止)
+const maxSceneNodes = 4096
+
 // nodeState はノードの現在値のうちサーバーが解釈する分。
 // 初期値はワールドJSON、以後はスクリプトのpatchで更新される
 type nodeState struct {
@@ -27,6 +31,8 @@ type nodeState struct {
 	x, z    float64 // 親相対座標
 	radius  float64 // hit判定・通行の半径
 	visible bool
+	// spawnRoot は動的スポーン由来のノードのルートid。静的(初期シーン)は空
+	spawnRoot string
 }
 
 // Session は1ワールドぶんの権威シーンとスクリプト実行。
@@ -40,8 +46,14 @@ type Session struct {
 	closed chan struct{}
 
 	nodes map[string]*nodeState
+	// childrenOf[parentID] = 子ノードid列(despawnの子孫収集用。""キーはトップレベル)
+	childrenOf map[string][]string
 	// patches は初期シーンからの累積差分。新規参加者へのgsnapの中身
 	patches map[string]map[string]any
+	// dynamicSpawns は生存中の動的スポーン(gsnap再現用。despawnで取り除く)
+	dynamicSpawns []spawnEntry
+	// removed は初期シーンからdespawnされたノードid(gsnap再現用)
+	removed []string
 	// listeners[nodeID][event] = 購読スクリプト
 	listeners map[string]map[string][]*script
 	scripts   []*script
@@ -57,12 +69,13 @@ func NewSession(def *world.Def, runtime *Runtime, broadcast func(data []byte, to
 	s := &Session{
 		world:     def,
 		broadcast: broadcast,
-		ops:       make(chan func(), 256),
-		closed:    make(chan struct{}),
-		nodes:     map[string]*nodeState{},
-		patches:   map[string]map[string]any{},
-		listeners: map[string]map[string][]*script{},
-		positions: map[string]struct{ x, z float64 }{},
+		ops:        make(chan func(), 256),
+		closed:     make(chan struct{}),
+		nodes:      map[string]*nodeState{},
+		childrenOf: map[string][]string{},
+		patches:    map[string]map[string]any{},
+		listeners:  map[string]map[string][]*script{},
+		positions:  map[string]struct{ x, z float64 }{},
 	}
 	for i := range def.Scene {
 		node := &def.Scene[i]
@@ -74,6 +87,7 @@ func NewSession(def *world.Def, runtime *Runtime, broadcast func(data []byte, to
 			def: node, parent: node.Parent,
 			x: node.X, z: node.Z, radius: radius, visible: true,
 		}
+		s.childrenOf[node.Parent] = append(s.childrenOf[node.Parent], node.ID)
 	}
 	s.env = &hostEnv{
 		onListen: func(sc *script, nodeID, event string) {
@@ -88,7 +102,9 @@ func NewSession(def *world.Def, runtime *Runtime, broadcast func(data []byte, to
 			}
 			byEvent[event] = append(byEvent[event], sc)
 		},
-		onPatch: s.applyPatch,
+		onPatch:   s.applyPatch,
+		onSpawn:   s.applySpawn,
+		onDespawn: s.applyDespawn,
 	}
 	s.loadScripts(runtime)
 	go s.run()
@@ -188,10 +204,12 @@ func (s *Session) HandleMessage(sender string, data []byte) {
 	}
 }
 
-// SyncTo は新規参加者へ現在の累積差分(gsnap)を送る
+// SyncTo は新規参加者へ現在のシーン差分(gsnap)を送る
 func (s *Session) SyncTo(identity string) {
 	s.enqueue(func() {
-		s.broadcast(mustJSON(snapshotMessage{T: "gsnap", Patches: s.patches}), []string{identity})
+		s.broadcast(mustJSON(snapshotMessage{
+			T: "gsnap", Patches: s.patches, Spawns: s.dynamicSpawns, Despawns: s.removed,
+		}), []string{identity})
 	})
 }
 
@@ -316,4 +334,133 @@ func (s *Session) applyPatch(id string, attrs map[string]any) {
 		}
 	}
 	s.broadcast(mustJSON(patchMessage{T: "gpatch", ID: id, Attrs: attrs}), nil)
+}
+
+// parseSpawnSubtree はspawnされたsubtreeをフラットに展開する。
+// 初期シーンのParse(欠落はスキップ)と違い、実行時APIなので1つでも不正ならエラー
+func parseSpawnSubtree(root map[string]any, parent string) ([]world.Node, bool) {
+	var nodes []world.Node
+	seen := map[string]bool{}
+	var walk func(n map[string]any, parent string) bool
+	walk = func(n map[string]any, parent string) bool {
+		node, ok := world.ParseNodeMap(n, parent)
+		if !ok || seen[node.ID] {
+			return false
+		}
+		seen[node.ID] = true
+		nodes = append(nodes, node)
+		if children, ok := n["children"].([]any); ok {
+			for _, c := range children {
+				cm, ok := c.(map[string]any)
+				if !ok || !walk(cm, node.ID) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	if !walk(root, parent) {
+		return nil, false
+	}
+	return nodes, true
+}
+
+// applySpawn はスクリプトからのノード動的追加を権威シーンに適用し全員へ配信する
+func (s *Session) applySpawn(parentID string, node map[string]any) {
+	if parentID != "" {
+		if _, ok := s.nodes[parentID]; !ok {
+			log.Printf("world %s: spawn: 親ノード%qがありません", s.world.ID, parentID)
+			return
+		}
+	}
+	parsed, ok := parseSpawnSubtree(node, parentID)
+	if !ok {
+		log.Printf("world %s: spawn: 不正なノード定義を無視しました", s.world.ID)
+		return
+	}
+	if len(s.nodes)+len(parsed) > maxSceneNodes {
+		log.Printf("world %s: spawn: ノード数上限(%d)を超えるため無視しました", s.world.ID, maxSceneNodes)
+		return
+	}
+	for _, n := range parsed {
+		if _, exists := s.nodes[n.ID]; exists {
+			log.Printf("world %s: spawn: id %q は使用中です", s.world.ID, n.ID)
+			return
+		}
+	}
+	rootID := parsed[0].ID
+	for i := range parsed {
+		n := &parsed[i]
+		radius := n.Collider
+		if radius <= 0 {
+			radius = defaultHitRadius
+		}
+		s.nodes[n.ID] = &nodeState{
+			def: n, parent: n.Parent,
+			x: n.X, z: n.Z, radius: radius, visible: true, spawnRoot: rootID,
+		}
+		s.childrenOf[n.Parent] = append(s.childrenOf[n.Parent], n.ID)
+	}
+	s.dynamicSpawns = append(s.dynamicSpawns, spawnEntry{Parent: parentID, Node: node})
+	s.broadcast(mustJSON(spawnMessage{T: "gspawn", Parent: parentID, Node: node}), nil)
+}
+
+// applyDespawn はノードを子孫ごと権威シーンから取り除き全員へ配信する
+func (s *Session) applyDespawn(id string) {
+	node, ok := s.nodes[id]
+	if !ok {
+		return
+	}
+	// 親の子リストから外す(子孫の分は下でまとめて消える)
+	s.childrenOf[node.parent] = slices.DeleteFunc(
+		s.childrenOf[node.parent], func(v string) bool { return v == id },
+	)
+	// 子孫を幅優先で収集して内部状態から消す
+	ids := []string{id}
+	for i := 0; i < len(ids); i++ {
+		ids = append(ids, s.childrenOf[ids[i]]...)
+	}
+	for _, rid := range ids {
+		delete(s.nodes, rid)
+		delete(s.listeners, rid)
+		delete(s.patches, rid)
+		delete(s.childrenOf, rid)
+	}
+	// 新規参加者への再現(gsnap)用の記録。gsnapは despawns → spawns → patches の
+	// 順に適用されるため、動的スポーン由来の削除はspawn記録側から取り除く
+	switch {
+	case node.spawnRoot == "":
+		s.removed = append(s.removed, id)
+	case node.spawnRoot == id:
+		s.dynamicSpawns = slices.DeleteFunc(s.dynamicSpawns, func(e spawnEntry) bool {
+			rootID, _ := e.Node["id"].(string)
+			return rootID == id
+		})
+	default:
+		for _, e := range s.dynamicSpawns {
+			if rootID, _ := e.Node["id"].(string); rootID == node.spawnRoot {
+				pruneSubtree(e.Node, id)
+			}
+		}
+	}
+	s.broadcast(mustJSON(despawnMessage{T: "gdespawn", ID: id}), nil)
+}
+
+// pruneSubtree はspawn記録のnode JSONからidのsubtreeを取り除く(gsnap再現用)
+func pruneSubtree(node map[string]any, id string) {
+	children, ok := node["children"].([]any)
+	if !ok {
+		return
+	}
+	kept := make([]any, 0, len(children))
+	for _, c := range children {
+		if cm, ok := c.(map[string]any); ok {
+			if cid, _ := cm["id"].(string); cid == id {
+				continue
+			}
+			pruneSubtree(cm, id)
+		}
+		kept = append(kept, c)
+	}
+	node["children"] = kept
 }

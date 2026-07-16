@@ -84,22 +84,9 @@ export function parseWorld(json: unknown): WorldDef {
 
   // id重複・欠落はそのsubtreeごとスキップ(idはツリー全体で一意)
   const seen = new Set<string>()
-  const parseNode = (node: unknown): SceneNode | null => {
-    if (typeof node !== 'object' || node === null) return null
-    const n = node as Record<string, unknown>
-    const nodeId = String(n.id ?? '')
-    const kind = String(n.kind ?? '')
-    if (!nodeId || !kind || seen.has(nodeId)) return null
-    seen.add(nodeId)
-    const parsed: SceneNode = { ...n, id: nodeId, kind }
-    if (Array.isArray(n.children)) {
-      parsed.children = n.children.map(parseNode).filter((c): c is SceneNode => c !== null)
-    } else {
-      delete parsed.children
-    }
-    return parsed
-  }
-  const scene = raw.scene.map(parseNode).filter((n): n is SceneNode => n !== null)
+  const scene = raw.scene
+    .map((n) => sanitizeSceneNode(n, seen))
+    .filter((n): n is SceneNode => n !== null)
 
   const scripts = Array.isArray(raw.scripts)
     ? raw.scripts.filter((s): s is string => typeof s === 'string')
@@ -114,6 +101,29 @@ export function parseWorld(json: unknown): WorldDef {
     scene,
     scripts,
   }
+}
+
+/**
+ * シーンノード1件(childrenごと)の検証・正規化。id/kind欠落や、
+ * seen(ツリー全体の既出id)との重複はsubtreeごとnullにする。
+ * 初期シーンのパースと動的スポーン(gspawn)の両方で使う
+ */
+export function sanitizeSceneNode(raw: unknown, seen: Set<string>): SceneNode | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const n = raw as Record<string, unknown>
+  const nodeId = String(n.id ?? '')
+  const kind = String(n.kind ?? '')
+  if (!nodeId || !kind || seen.has(nodeId)) return null
+  seen.add(nodeId)
+  const parsed: SceneNode = { ...n, id: nodeId, kind }
+  if (Array.isArray(n.children)) {
+    parsed.children = n.children
+      .map((c) => sanitizeSceneNode(c, seen))
+      .filter((c): c is SceneNode => c !== null)
+  } else {
+    delete parsed.children
+  }
+  return parsed
 }
 
 /** ワールドJSONのURLを基準に、アセットの相対URLを解決する */

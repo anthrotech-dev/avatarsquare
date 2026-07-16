@@ -12,10 +12,12 @@ import {
   MAX_NAME_LENGTH,
   type PosMessage,
   type ProfileMessage,
+  type SceneDespawnMessage,
   type SceneEventMessage,
   type SceneInputMessage,
   type ScenePatchMessage,
   type SceneSnapshotMessage,
+  type SceneSpawnMessage,
   type SpeakMessage,
   sanitizeChatText,
   sanitizeName,
@@ -81,6 +83,25 @@ describe('encodeMessage / decodeMessage', () => {
 
     const input: SceneInputMessage = { t: 'ginput', id: 'counter-button', action: 'interact' }
     expect(decodeMessage(encodeMessage(input))).toEqual(input)
+  })
+
+  it('動的ノードメッセージ(gspawn/gdespawn・拡張gsnap)がラウンドトリップする', () => {
+    const spawn: SceneSpawnMessage = {
+      t: 'gspawn',
+      node: { id: 'scarecrow@1', kind: 'group', children: [{ id: 'v@1', kind: 'sprite' }] },
+    }
+    expect(decodeMessage(encodeMessage(spawn))).toEqual(spawn)
+
+    const despawn: SceneDespawnMessage = { t: 'gdespawn', id: 'scarecrow' }
+    expect(decodeMessage(encodeMessage(despawn))).toEqual(despawn)
+
+    const snapshot: SceneSnapshotMessage = {
+      t: 'gsnap',
+      patches: {},
+      spawns: [{ node: { id: 'scarecrow@1', kind: 'group' } }],
+      despawns: ['scarecrow'],
+    }
+    expect(decodeMessage(encodeMessage(snapshot))).toEqual(snapshot)
   })
 
   it('vmodeメッセージ(発音モード通知)がラウンドトリップする', () => {
@@ -173,9 +194,11 @@ describe('isSystemId / isSceneAuthorityMessage', () => {
     expect(isSystemId('user-abc123')).toBe(false)
   })
 
-  it('サーバー権威メッセージ(gpatch/gsnap/gevent)を判別する', () => {
+  it('サーバー権威メッセージ(gpatch/gsnap/gspawn/gdespawn/gevent)を判別する', () => {
     expect(isSceneAuthorityMessage({ t: 'gpatch', id: 'a', attrs: {} })).toBe(true)
     expect(isSceneAuthorityMessage({ t: 'gsnap', patches: {} })).toBe(true)
+    expect(isSceneAuthorityMessage({ t: 'gspawn', node: { id: 'a', kind: 'group' } })).toBe(true)
+    expect(isSceneAuthorityMessage({ t: 'gdespawn', id: 'a' })).toBe(true)
     expect(isSceneAuthorityMessage({ t: 'gevent', id: 'a', name: 'hit' })).toBe(true)
     // ginputはクライアント発なので権威メッセージではない
     expect(isSceneAuthorityMessage({ t: 'ginput', id: 'a', action: 'interact' })).toBe(false)

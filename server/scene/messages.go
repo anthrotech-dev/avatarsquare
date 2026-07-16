@@ -4,7 +4,7 @@ import "encoding/json"
 
 // DataChannelメッセージのGo側ミラー(正本は client/src/net/protocol.ts)。
 // サーバーが解釈するのは pos / act / ginput(受信)と
-// gpatch / gsnap / gevent(送信、ワールドボットのみが発行する権威更新)。
+// gpatch / gsnap / gspawn / gdespawn / gevent(送信、ワールドボットのみが発行する権威更新)。
 
 // WorldBotID はワールドボットのidentity。/tokenが"__"始まりを拒否するため
 // プレイヤーは名乗れない(クライアントはこのidentityからのシーン系のみ受理する)
@@ -34,6 +34,27 @@ type patchMessage struct {
 type snapshotMessage struct {
 	T       string                    `json:"t"`
 	Patches map[string]map[string]any `json:"patches"`
+	// Spawns は現在生存中の動的スポーンノード(スポーン順)。
+	// クライアントは despawns → spawns → patches の順に適用する
+	Spawns   []spawnEntry `json:"spawns,omitempty"`
+	Despawns []string     `json:"despawns,omitempty"`
+}
+
+// spawnEntry は動的スポーン1件(gsnap再現用の記録と共用)
+type spawnEntry struct {
+	Parent string         `json:"parent,omitempty"`
+	Node   map[string]any `json:"node"`
+}
+
+type spawnMessage struct {
+	T      string         `json:"t"`
+	Parent string         `json:"parent,omitempty"`
+	Node   map[string]any `json:"node"`
+}
+
+type despawnMessage struct {
+	T  string `json:"t"`
+	ID string `json:"id"`
 }
 
 type eventMessage struct {

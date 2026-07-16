@@ -15,9 +15,10 @@
 //! - export: `asq_alloc(len)->ptr`(入力バッファ確保。次の呼び出しまで有効)、
 //!   `asq_main(ptr,len)` / `asq_event(ptr,len)`(JSON文字列)、`asq_tick(dt_ms)`
 //! - import (module "asq"): `log(ptr,len)` / `listen(id_ptr,id_len,ev_ptr,ev_len)` /
-//!   `patch(ptr,len)`(`{"id":…,"attrs":{…}}`)
+//!   `patch(ptr,len)`(`{"id":…,"attrs":{…}}`)/
+//!   `spawn(ptr,len)`(`{"parent":…,"node":{…}}`)/ `despawn(id_ptr,id_len)`
 //!
-//! ABIのホスト側実装(正本)は server/scene/abi.go を参照。
+//! ABIのホスト側実装(正本)は server/scene/script.go を参照。
 
 pub use serde_json::{self, json, Value};
 
@@ -27,6 +28,8 @@ mod ffi {
         pub fn log(ptr: *const u8, len: usize);
         pub fn listen(id_ptr: *const u8, id_len: usize, ev_ptr: *const u8, ev_len: usize);
         pub fn patch(ptr: *const u8, len: usize);
+        pub fn spawn(ptr: *const u8, len: usize);
+        pub fn despawn(id_ptr: *const u8, id_len: usize);
     }
 }
 
@@ -44,6 +47,22 @@ pub fn listen(node_id: &str, event: &str) {
 pub fn patch(node_id: &str, attrs: Value) {
     let payload = json!({ "id": node_id, "attrs": attrs }).to_string();
     unsafe { ffi::patch(payload.as_ptr(), payload.len()) }
+}
+
+/// ノード(childrenごとのsubtree)を動的に追加する。parent=Noneでトップレベル。
+/// idは生存中のノードと重複不可。呼び出し中に同期適用されるため、直後のlistenが通る
+pub fn spawn(parent: Option<&str>, node: Value) {
+    let payload = match parent {
+        Some(p) => json!({ "parent": p, "node": node }),
+        None => json!({ "node": node }),
+    }
+    .to_string();
+    unsafe { ffi::spawn(payload.as_ptr(), payload.len()) }
+}
+
+/// ノードを子孫ごと動的に削除する(リスナー・累積パッチも消える)
+pub fn despawn(node_id: &str) {
+    unsafe { ffi::despawn(node_id.as_ptr(), node_id.len()) }
 }
 
 /// 購読したノードに起きたイベント

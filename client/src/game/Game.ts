@@ -14,9 +14,11 @@ import {
   isSceneAuthorityMessage,
   isSystemId,
   isVoiceMode,
+  type SceneDespawnMessage,
   type SceneEventMessage,
   type ScenePatchMessage,
   type SceneSnapshotMessage,
+  type SceneSpawnMessage,
   sanitizeChatText,
   sanitizeName,
   type VoiceMode,
@@ -262,7 +264,8 @@ export class Game {
     this.world = world
     this.sceneRenderer = new SceneRenderer(world, worldUrl)
     this.scene.add(this.sceneRenderer.group)
-    this.navGrid = buildNavGrid(world) // ワールドは接続中静的なので切替時に事前計算
+    // 初期シーンで事前計算(以後の動的spawn/despawnはmarkNavGridDirtyで再構築)
+    this.navGrid = buildNavGrid(world)
     this.avatar.setPath([])
     this.avatar.position.set(world.spawn.x, 0, world.spawn.z)
     this.focus.copy(this.avatar.position)
@@ -331,18 +334,53 @@ export class Game {
 
   /** ワールドボットからのシーン権威更新を描画へ反映する */
   private applySceneMessage(
-    message: ScenePatchMessage | SceneSnapshotMessage | SceneEventMessage,
+    message:
+      | ScenePatchMessage
+      | SceneSnapshotMessage
+      | SceneSpawnMessage
+      | SceneDespawnMessage
+      | SceneEventMessage,
   ): void {
     const renderer = this.sceneRenderer
     if (!renderer) return
-    if (message.t === 'gpatch') renderer.applyPatch(message.id, message.attrs)
-    if (message.t === 'gsnap') renderer.applySnapshot(message.patches)
-    if (message.t === 'gevent' && message.name === 'hit') {
-      const node = renderer.getNode(message.id)
-      if (node && typeof node.x === 'number' && typeof node.z === 'number') {
-        this.effects.spawn({ kind: 'hitflash', x: node.x, z: node.z })
-      }
+    switch (message.t) {
+      case 'gpatch':
+        renderer.applyPatch(message.id, message.attrs)
+        break
+      case 'gsnap':
+        renderer.applySnapshot(message.patches, message.spawns, message.despawns)
+        if (message.spawns?.length || message.despawns?.length) this.markNavGridDirty()
+        break
+      case 'gspawn':
+        renderer.applySpawn(message.parent, message.node)
+        this.markNavGridDirty()
+        break
+      case 'gdespawn':
+        renderer.applyDespawn(message.id)
+        this.markNavGridDirty()
+        break
+      case 'gevent':
+        if (message.name === 'hit') {
+          const pos = renderer.worldPosition(message.id)
+          if (pos) this.effects.spawn({ kind: 'hitflash', x: pos.x, z: pos.z })
+        }
+        break
     }
+  }
+
+  /**
+   * 動的spawn/despawnで通行判定(navGrid)が変わったときの再構築。
+   * 連続するシーン変化を1回にまとめるためmicrotaskで遅延する
+   */
+  private navGridDirty = false
+  private markNavGridDirty(): void {
+    if (this.navGridDirty) return
+    this.navGridDirty = true
+    queueMicrotask(() => {
+      this.navGridDirty = false
+      if (this.disposed || !this.world || !this.sceneRenderer) return
+      this.navGrid = buildNavGrid({ ...this.world, scene: this.sceneRenderer.liveScene() })
+    })
   }
 
   /**

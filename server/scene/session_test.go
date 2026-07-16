@@ -136,26 +136,66 @@ func TestScarecrowHitAndRespawn(t *testing.T) {
 	// 後ろ向きの斬撃も当たらない
 	session.HandleMessage("alice", actMsg("slash", 0, 3.5, 3.14159, nil, nil))
 
-	// 射撃(手前の的を射線が貫く)であと2発 → HP 0で倒れる(visible false)
+	// 射撃(手前の的を射線が貫く)であと2発 → HP 0で消滅(gdespawn)
 	tx, tz := 0.0, 6.0
 	session.HandleMessage("alice", actMsg("shoot", 0, 0, 0, &tx, &tz))
 	session.HandleMessage("alice", actMsg("shoot", 0, 0, 0, &tx, &tz))
-	rec = waitFor(t, ch, "down patch", func(r broadcastRec) bool {
-		return isPatch(r, "scarecrow") && attrs(r)["visible"] == false
+	waitFor(t, ch, "gdespawn", func(r broadcastRec) bool {
+		return r.msg["t"] == "gdespawn" && r.msg["id"] == "scarecrow"
 	})
-	if v := attrs(rec)["hp"].(float64); v != 0 {
-		t.Errorf("down hp = %v, want 0", v)
-	}
 
-	// 倒れている間は当たらない(nodeState.visible=falseでスキップ)
+	// 消滅中は当たらない(ノード自体が無い)
 	session.HandleMessage("alice", actMsg("slash", 0, 3.5, 0, nil, nil))
 
-	// respawnMs(300ms)+tick後に復活(visible true + hp全快)
-	rec = waitFor(t, ch, "respawn patch", func(r broadcastRec) bool {
-		return isPatch(r, "scarecrow") && attrs(r)["visible"] == true
+	// respawnMs(300ms)+tick後に「別のかかし」がスポーンする(世代id)
+	rec = waitFor(t, ch, "gspawn", func(r broadcastRec) bool { return r.msg["t"] == "gspawn" })
+	spawned, _ := rec.msg["node"].(map[string]any)
+	if spawned["id"] != "scarecrow@1" {
+		t.Fatalf("spawned id = %v, want scarecrow@1", spawned["id"])
+	}
+	if spawned["hp"].(float64) != 30 {
+		t.Errorf("spawned hp = %v, want 30", spawned["hp"])
+	}
+	children, _ := spawned["children"].([]any)
+	if len(children) != 2 {
+		t.Errorf("spawned children = %d, want 2 (sprite+bar)", len(children))
+	}
+
+	// 新しいかかしにも攻撃が通る(listenの引き継ぎ)
+	session.HandleMessage("alice", actMsg("slash", 0, 3.5, 0, nil, nil))
+	waitFor(t, ch, "gevent hit on respawned", func(r broadcastRec) bool {
+		return r.msg["t"] == "gevent" && r.msg["id"] == "scarecrow@1" && r.msg["name"] == "hit"
 	})
-	if v := attrs(rec)["hp"].(float64); v != 30 {
-		t.Errorf("respawn hp = %v, want 30", v)
+	rec = waitFor(t, ch, "hp patch on respawned", func(r broadcastRec) bool {
+		return isPatch(r, "scarecrow@1")
+	})
+	if v := attrs(rec)["hp"].(float64); v != 20 {
+		t.Errorf("respawned hp = %v, want 20", v)
+	}
+
+	// 途中参加者へのgsnap: 初期かかしの消滅と新かかしのスポーンが再現される
+	session.SyncTo("bob")
+	rec = waitFor(t, ch, "gsnap", func(r broadcastRec) bool { return r.msg["t"] == "gsnap" })
+	despawns, _ := rec.msg["despawns"].([]any)
+	if len(despawns) != 1 || despawns[0] != "scarecrow" {
+		t.Errorf("gsnap despawns = %v, want [scarecrow]", despawns)
+	}
+	spawns, _ := rec.msg["spawns"].([]any)
+	if len(spawns) != 1 {
+		t.Fatalf("gsnap spawns = %v, want 1 entry", spawns)
+	}
+	entry, _ := spawns[0].(map[string]any)
+	entryNode, _ := entry["node"].(map[string]any)
+	if entryNode["id"] != "scarecrow@1" {
+		t.Errorf("gsnap spawn id = %v, want scarecrow@1", entryNode["id"])
+	}
+	patches, _ := rec.msg["patches"].(map[string]any)
+	respawnedPatch, _ := patches["scarecrow@1"].(map[string]any)
+	if respawnedPatch["hp"].(float64) != 20 {
+		t.Errorf("gsnap patches[scarecrow@1].hp = %v, want 20", respawnedPatch["hp"])
+	}
+	if _, stale := patches["scarecrow"]; stale {
+		t.Error("despawn済みノードの累積patchはgsnapから消えるべき")
 	}
 }
 

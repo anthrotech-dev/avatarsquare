@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { resolveWorldUrl, type SceneNode, type WorldDef } from './WorldDef'
+import { resolveWorldUrl, type SceneNode, sanitizeSceneNode, type WorldDef } from './WorldDef'
 
 /**
  * ワールドのシーンノードを描画する汎用レンダラー。
@@ -99,7 +99,10 @@ export class SceneRenderer {
   /** barのデータバインド: sourceノードid → そのノードの属性から再描画する関数群 */
   private readonly barBindings = new Map<string, Set<() => void>>()
 
-  constructor(world: WorldDef, worldUrl: string) {
+  constructor(
+    private readonly world: WorldDef,
+    private readonly worldUrl: string,
+  ) {
     for (const node of world.scene) {
       const object = this.buildTree(node, null, world, worldUrl)
       if (object) this.group.add(object)
@@ -193,9 +196,69 @@ export class SceneRenderer {
     if (bindings) for (const refresh of bindings) refresh()
   }
 
-  /** 入室時スナップショット(ノードごとの累積パッチ)の一括反映 */
-  applySnapshot(patches: Record<string, Record<string, unknown>>): void {
+  /** 入室時スナップショット(despawn→spawn→累積パッチの順)の一括反映 */
+  applySnapshot(
+    patches: Record<string, Record<string, unknown>>,
+    spawns?: Array<{ parent?: string; node: Record<string, unknown> }>,
+    despawns?: string[],
+  ): void {
+    for (const id of despawns ?? []) this.applyDespawn(id)
+    for (const spawn of spawns ?? []) this.applySpawn(spawn.parent, spawn.node)
     for (const [id, attrs] of Object.entries(patches)) this.applyPatch(id, attrs)
+  }
+
+  /**
+   * サーバーからの動的ノード追加(gspawn)。subtreeを構築して親(省略時はトップレベル)へ
+   * ぶら下げる。既存idと衝突する不正なspawnは無視する(サーバー側でも検証済み)
+   */
+  applySpawn(parentId: string | undefined, raw: Record<string, unknown>): void {
+    const node = sanitizeSceneNode(raw, new Set())
+    if (!node) return
+    const ids: string[] = []
+    const collect = (n: SceneNode): void => {
+      ids.push(n.id)
+      for (const c of n.children ?? []) collect(c)
+    }
+    collect(node)
+    if (ids.some((id) => this.views.has(id))) return
+    const parentView = parentId ? this.views.get(parentId) : undefined
+    if (parentId && !parentView) return
+    const object = this.buildTree(node, parentId ?? null, this.world, this.worldUrl)
+    if (!object) return
+    ;(parentView?.object ?? this.group).add(object)
+  }
+
+  /** サーバーからの動的ノード削除(gdespawn)。子孫ごと破棄する */
+  applyDespawn(id: string): void {
+    const view = this.views.get(id)
+    if (!view) return
+    // parentsマップから子孫を収集する(幅優先)
+    const doomed = [id]
+    for (let i = 0; i < doomed.length; i++) {
+      for (const [childId, parentId] of this.parents) {
+        if (parentId === doomed[i]) doomed.push(childId)
+      }
+    }
+    for (const removedId of doomed) {
+      this.views.get(removedId)?.dispose() // barの場合はバインド解除も行われる
+      this.views.delete(removedId)
+      this.parents.delete(removedId)
+      this.barBindings.delete(removedId)
+    }
+    view.object.removeFromParent()
+  }
+
+  /**
+   * 生存中ノードのワールド座標解決済みフラットリスト。
+   * 動的spawn/despawn後のnavGrid再構築(通行判定)に使う
+   */
+  liveScene(): SceneNode[] {
+    const out: SceneNode[] = []
+    for (const [id, view] of this.views) {
+      const pos = this.worldPosition(id)
+      out.push({ ...view.def, x: pos?.x ?? 0, z: pos?.z ?? 0, children: undefined })
+    }
+    return out
   }
 
   private applyCommonAttrs(view: NodeView, def: SceneNode): void {

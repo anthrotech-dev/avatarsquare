@@ -117,10 +117,34 @@ export interface ScenePatchMessage {
   attrs: Record<string, unknown>
 }
 
-/** サーバー→新規参加者: 初期シーンからの累積差分(入室直後に1回) */
+/**
+ * サーバー→新規参加者: 初期シーンとの差分(入室直後に1回)。
+ * 適用順: despawns → spawns → patches
+ */
 export interface SceneSnapshotMessage {
   t: 'gsnap'
   patches: Record<string, Record<string, unknown>>
+  /** 現在生存中の動的スポーンノード(スポーン順) */
+  spawns?: Array<{ parent?: string; node: Record<string, unknown> }>
+  /** 初期シーンから消えたノードのid */
+  despawns?: string[]
+}
+
+/**
+ * サーバー→全員: シーンノードの動的追加。nodeはchildrenごとのsubtree
+ * (SceneNode相当)。ワールドのwasmスクリプトのspawnが発行元
+ */
+export interface SceneSpawnMessage {
+  t: 'gspawn'
+  /** 追加先の親ノードid。省略時はトップレベル */
+  parent?: string
+  node: Record<string, unknown>
+}
+
+/** サーバー→全員: シーンノードの動的削除(子孫ごと消える) */
+export interface SceneDespawnMessage {
+  t: 'gdespawn'
+  id: string
 }
 
 /** サーバー→全員: 一過性のシーンイベント(被弾フラッシュ等の演出トリガー) */
@@ -150,6 +174,8 @@ export type GameMessage =
   | VoiceModeMessage
   | ScenePatchMessage
   | SceneSnapshotMessage
+  | SceneSpawnMessage
+  | SceneDespawnMessage
   | SceneEventMessage
   | SceneInputMessage
 
@@ -190,6 +216,8 @@ const MESSAGE_TYPES = new Set([
   'vmode',
   'gpatch',
   'gsnap',
+  'gspawn',
+  'gdespawn',
   'gevent',
   'ginput',
 ])
@@ -197,8 +225,19 @@ const MESSAGE_TYPES = new Set([
 /** シーン系メッセージ(サーバー権威)か。ワールドボット以外から届いたら捨てる */
 export function isSceneAuthorityMessage(
   message: GameMessage,
-): message is ScenePatchMessage | SceneSnapshotMessage | SceneEventMessage {
-  return message.t === 'gpatch' || message.t === 'gsnap' || message.t === 'gevent'
+): message is
+  | ScenePatchMessage
+  | SceneSnapshotMessage
+  | SceneSpawnMessage
+  | SceneDespawnMessage
+  | SceneEventMessage {
+  return (
+    message.t === 'gpatch' ||
+    message.t === 'gsnap' ||
+    message.t === 'gspawn' ||
+    message.t === 'gdespawn' ||
+    message.t === 'gevent'
+  )
 }
 
 const encoder = new TextEncoder()

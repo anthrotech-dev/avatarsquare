@@ -19,6 +19,8 @@ const (
 	maxConsecutiveErrors = 10
 	// emit(patch)の1回あたりのサイズ上限
 	maxPatchBytes = 8 << 10
+	// spawn(subtree JSON)の1回あたりのサイズ上限
+	maxSpawnBytes = 16 << 10
 )
 
 // script は1つのwasmスクリプトのインスタンス。
@@ -139,6 +141,10 @@ type hostEnv struct {
 	onListen func(s *script, nodeID, event string)
 	// onPatch は検証済みパッチの適用+配信
 	onPatch func(id string, attrs map[string]any)
+	// onSpawn はノードsubtreeの動的追加(検証はセッション側)
+	onSpawn func(parentID string, node map[string]any)
+	// onDespawn はノードの動的削除(子孫ごと)
+	onDespawn func(id string)
 }
 
 // readString はゲストメモリから文字列を読む
@@ -191,4 +197,37 @@ func hostPatch(ctx context.Context, m api.Module, ptr, len uint32) {
 		return
 	}
 	env.onPatch(payload.ID, payload.Attrs)
+}
+
+func hostSpawn(ctx context.Context, m api.Module, ptr, len uint32) {
+	env := envFrom(ctx)
+	if env == nil {
+		return
+	}
+	if len > maxSpawnBytes {
+		log.Printf("[script %s] spawnが大きすぎます(%dB > %dB)", env.current.label(), len, maxSpawnBytes)
+		return
+	}
+	raw, ok := m.Memory().Read(ptr, len)
+	if !ok {
+		return
+	}
+	var payload struct {
+		Parent string         `json:"parent"`
+		Node   map[string]any `json:"node"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil || payload.Node == nil {
+		log.Printf("[script %s] 不正なspawnを無視しました", env.current.label())
+		return
+	}
+	env.onSpawn(payload.Parent, payload.Node)
+}
+
+func hostDespawn(ctx context.Context, m api.Module, idPtr, idLen uint32) {
+	env := envFrom(ctx)
+	id, ok := readString(m, idPtr, idLen)
+	if env == nil || !ok || id == "" {
+		return
+	}
+	env.onDespawn(id)
 }

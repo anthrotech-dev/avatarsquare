@@ -1,4 +1,5 @@
-//! かかし: 攻撃を受けるとHPが減り、0になると倒れて(非表示)しばらく後に復活する。
+//! かかし: 攻撃を受けるとHPが減り、0になると消滅(despawn)し、
+//! しばらく後に「別のかかし」が同じ場所にスポーンする。
 //!
 //! 対象ノードはシーン側で宣言する。ノードに `scarecrow` 属性があれば管理対象:
 //! ```jsonc
@@ -8,9 +9,10 @@
 //! ```
 //! HPはノード自身の `hp` 属性としてpatchで公開する。ゲージ表示は
 //! ワールド側が `bar`(source/valueFrom/maxFrom)を子に置いて実現する。
+//! 復活は元ノードJSONをテンプレートに、subtree内の全idへ `@世代` を付けた
+//! 新エンティティをspawnする(=クライアントの選択などは自然に外れる)。
 
-use asq_sdk::{json, listen, log, patch, Event, Script, Value};
-use std::collections::HashMap;
+use asq_sdk::{despawn, json, listen, log, patch, spawn, Event, Script, Value};
 
 const DAMAGE_PER_HIT: i64 = 10;
 
@@ -18,13 +20,32 @@ struct Target {
     hp: i64,
     max_hp: i64,
     respawn_ms: i64,
-    /// 倒れている間の復活までの残り時間(ms)
+    /// 消滅中の復活までの残り時間(ms)。0以下は生存中
     down_left: i64,
+    /// 元のノードJSON(childrenごと)。復活時のspawn元
+    template: Value,
+    /// 現在生きているノードのid(世代サフィックス付き)
+    live_id: String,
+    /// 復活の世代。スポーンごとに+1してid衝突を避ける
+    gen: u32,
 }
 
 #[derive(Default)]
 struct Scarecrow {
-    targets: HashMap<String, Target>,
+    targets: Vec<Target>,
+}
+
+/// subtree内の全idに `@世代` サフィックスを付ける(テンプレートのidが基準)
+fn rewrite_ids(node: &mut Value, gen: u32) {
+    if let Some(id) = node["id"].as_str() {
+        let renamed = format!("{id}@{gen}");
+        node["id"] = Value::String(renamed);
+    }
+    if let Some(children) = node["children"].as_array_mut() {
+        for child in children {
+            rewrite_ids(child, gen);
+        }
+    }
 }
 
 impl Script for Scarecrow {
@@ -41,15 +62,15 @@ impl Script for Scarecrow {
                 continue;
             };
             let max_hp = config["hp"].as_i64().unwrap_or(100).max(1);
-            self.targets.insert(
-                id.to_string(),
-                Target {
-                    hp: max_hp,
-                    max_hp,
-                    respawn_ms: config["respawnMs"].as_i64().unwrap_or(5000),
-                    down_left: 0,
-                },
-            );
+            self.targets.push(Target {
+                hp: max_hp,
+                max_hp,
+                respawn_ms: config["respawnMs"].as_i64().unwrap_or(5000),
+                down_left: 0,
+                template: node.clone(),
+                live_id: id.to_string(),
+                gen: 0,
+            });
             listen(id, "hit");
             log(&format!("scarecrow ready: {id} (hp {max_hp})"));
         }
@@ -59,31 +80,38 @@ impl Script for Scarecrow {
         if event.event_type != "hit" {
             return;
         }
-        let Some(target) = self.targets.get_mut(&event.node) else {
+        let Some(target) = self.targets.iter_mut().find(|t| t.live_id == event.node) else {
             return;
         };
-        // 倒れている間は無敵(復活待ち)
+        // 消滅中(復活待ち)のイベントは無視(通常は届かない)
         if target.hp <= 0 {
             return;
         }
         target.hp = (target.hp - DAMAGE_PER_HIT).max(0);
+        patch(&event.node, json!({ "hp": target.hp }));
         if target.hp == 0 {
             target.down_left = target.respawn_ms;
-            patch(&event.node, json!({ "hp": target.hp, "visible": false }));
-        } else {
-            patch(&event.node, json!({ "hp": target.hp }));
+            despawn(&event.node);
         }
     }
 
     fn on_tick(&mut self, dt_ms: u32) {
-        for (id, target) in self.targets.iter_mut() {
+        for target in self.targets.iter_mut() {
             if target.hp > 0 {
                 continue;
             }
             target.down_left -= dt_ms as i64;
             if target.down_left <= 0 {
+                // 「別のかかし」として新しいidでスポーンし直す
+                target.gen += 1;
+                let mut node = target.template.clone();
+                rewrite_ids(&mut node, target.gen);
+                node["hp"] = json!(target.max_hp);
+                let live_id = node["id"].as_str().unwrap_or_default().to_string();
+                spawn(None, node);
+                listen(&live_id, "hit");
+                target.live_id = live_id;
                 target.hp = target.max_hp;
-                patch(id, json!({ "visible": true, "hp": target.max_hp }));
             }
         }
     }

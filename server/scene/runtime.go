@@ -39,6 +39,8 @@ func NewRuntime(ctx context.Context) (*Runtime, error) {
 		NewFunctionBuilder().WithFunc(hostLog).Export("log").
 		NewFunctionBuilder().WithFunc(hostListen).Export("listen").
 		NewFunctionBuilder().WithFunc(hostPatch).Export("patch").
+		NewFunctionBuilder().WithFunc(hostSpawn).Export("spawn").
+		NewFunctionBuilder().WithFunc(hostDespawn).Export("despawn").
 		Instantiate(ctx)
 	if err != nil {
 		r.Close(ctx)
