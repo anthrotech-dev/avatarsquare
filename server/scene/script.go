@@ -21,6 +21,8 @@ const (
 	maxPatchBytes = 8 << 10
 	// spawn(subtree JSON)の1回あたりのサイズ上限
 	maxSpawnBytes = 16 << 10
+	// event(gevent payload)の1回あたりのサイズ上限
+	maxEventBytes = 1 << 10
 )
 
 // script は1つのwasmスクリプトのインスタンス。
@@ -145,6 +147,10 @@ type hostEnv struct {
 	onSpawn func(parentID string, node map[string]any)
 	// onDespawn はノードの動的削除(子孫ごと)
 	onDespawn func(id string)
+	// onPlayers は現在の参加者位置のJSON(pull型API playersの応答)
+	onPlayers func() []byte
+	// onEvent は演出イベント(gevent)のbroadcast(検証はセッション側)
+	onEvent func(id, name string, data map[string]any)
 }
 
 // readString はゲストメモリから文字列を読む
@@ -230,4 +236,47 @@ func hostDespawn(ctx context.Context, m api.Module, idPtr, idLen uint32) {
 		return
 	}
 	env.onDespawn(id)
+}
+
+// hostPlayers は参加者位置のpull型API。ゲストが確保したバッファ(ptr,cap)へ
+// JSON(`{"players":[{"id","x","z"}]}`)を書き込み、書き込んだバイト数を返す。
+// capが不足する場合は書き込まずに -必要サイズ を返す(ゲスト側で拡張して再試行)
+func hostPlayers(ctx context.Context, m api.Module, ptr, cap uint32) int32 {
+	env := envFrom(ctx)
+	if env == nil {
+		return 0
+	}
+	payload := env.onPlayers()
+	if len(payload) > int(cap) {
+		return -int32(len(payload))
+	}
+	if !m.Memory().Write(ptr, payload) {
+		return 0
+	}
+	return int32(len(payload))
+}
+
+func hostEvent(ctx context.Context, m api.Module, ptr, len uint32) {
+	env := envFrom(ctx)
+	if env == nil {
+		return
+	}
+	if len > maxEventBytes {
+		log.Printf("[script %s] eventが大きすぎます(%dB > %dB)", env.current.label(), len, maxEventBytes)
+		return
+	}
+	raw, ok := m.Memory().Read(ptr, len)
+	if !ok {
+		return
+	}
+	var payload struct {
+		ID   string         `json:"id"`
+		Name string         `json:"name"`
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil || payload.ID == "" || payload.Name == "" {
+		log.Printf("[script %s] 不正なeventを無視しました", env.current.label())
+		return
+	}
+	env.onEvent(payload.ID, payload.Name, payload.Data)
 }

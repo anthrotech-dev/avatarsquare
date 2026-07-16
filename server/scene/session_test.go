@@ -286,6 +286,45 @@ func TestWorldXZ(t *testing.T) {
 	s.worldXZ(s.nodes["loopA"])
 }
 
+func TestApplyEventIgnoresUnknownNode(t *testing.T) {
+	var sent []map[string]any
+	s := &Session{
+		nodes: map[string]*nodeState{"slime": {}},
+		broadcast: func(data []byte, _ []string) {
+			var msg map[string]any
+			_ = json.Unmarshal(data, &msg)
+			sent = append(sent, msg)
+		},
+	}
+	s.applyEvent("no-such-node", "hit", nil)
+	s.applyEvent("slime", "hit", map[string]any{"x": 1.5})
+	if len(sent) != 1 {
+		t.Fatalf("broadcasts = %d, want 1 (不在idは無視)", len(sent))
+	}
+	if sent[0]["t"] != "gevent" || sent[0]["id"] != "slime" {
+		t.Errorf("gevent = %v", sent[0])
+	}
+	data, _ := sent[0]["data"].(map[string]any)
+	if data["x"] != 1.5 {
+		t.Errorf("data = %v", data)
+	}
+}
+
+func TestPlayersPayloadSorted(t *testing.T) {
+	s := &Session{positions: map[string]struct{ x, z float64 }{
+		"zoe":   {x: 3, z: 4},
+		"alice": {x: 1, z: 2},
+	}}
+	want := `{"players":[{"id":"alice","x":1,"z":2},{"id":"zoe","x":3,"z":4}]}`
+	if got := string(s.playersPayload()); got != want {
+		t.Errorf("payload = %s, want %s", got, want)
+	}
+	s.positions = map[string]struct{ x, z float64 }{}
+	if got := string(s.playersPayload()); got != `{"players":[]}` {
+		t.Errorf("empty payload = %s", got)
+	}
+}
+
 func TestBrokenScriptIsSkipped(t *testing.T) {
 	// 存在しないwasm URL → そのスクリプトだけスキップされ、セッションは生きる
 	def, err := world.Parse([]byte(`{

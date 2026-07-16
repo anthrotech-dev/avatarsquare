@@ -106,6 +106,8 @@ func NewSession(def *world.Def, runtime *Runtime, broadcast func(data []byte, to
 		onPatch:   s.applyPatch,
 		onSpawn:   s.applySpawn,
 		onDespawn: s.applyDespawn,
+		onPlayers: s.playersPayload,
+		onEvent:   s.applyEvent,
 	}
 	s.loadScripts(runtime)
 	go s.run()
@@ -479,6 +481,36 @@ func (s *Session) applyDespawn(id string) {
 		}
 	}
 	s.broadcast(mustJSON(despawnMessage{T: "gdespawn", ID: id}), nil)
+}
+
+// playersPayload は参加者位置のJSON(スクリプトのpull型API players の応答)。
+// mapの走査順はランダムなのでid昇順に固定する(アグロ判定等を決定的にする)
+func (s *Session) playersPayload() []byte {
+	ids := make([]string, 0, len(s.positions))
+	for id := range s.positions {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	type player struct {
+		ID string  `json:"id"`
+		X  float64 `json:"x"`
+		Z  float64 `json:"z"`
+	}
+	players := make([]player, 0, len(ids))
+	for _, id := range ids {
+		pos := s.positions[id]
+		players = append(players, player{ID: id, X: pos.x, Z: pos.z})
+	}
+	return mustJSON(map[string]any{"players": players})
+}
+
+// applyEvent はスクリプトからの演出イベントを全員へgeventとして配信する。
+// 存在するノードのidのみ通す(listen/patchと同じ規約)。dataの中身は解釈しない
+func (s *Session) applyEvent(id, name string, data map[string]any) {
+	if _, ok := s.nodes[id]; !ok {
+		return
+	}
+	s.broadcast(mustJSON(eventMessage{T: "gevent", ID: id, Name: name, Data: data}), nil)
 }
 
 // pruneSubtree はspawn記録のnode JSONからidのsubtreeを取り除く(gsnap再現用)
