@@ -21,6 +21,9 @@ use std::collections::HashMap;
 const DAMAGE_PER_HIT: i64 = 10;
 /// ボタン連打の暴発防止(同時数上限ではない)
 const SPAWN_COOLDOWN_MS: i64 = 250;
+/// 斬撃(kind=slash)被弾で付くよろめきデバフの持続時間。表示専用で挙動は変えない。
+/// ノード属性buffsの汎用規約(remainingMs=送信時点の残り時間)でクライアントに配る
+const STAGGER_MS: i64 = 5000;
 
 struct Button {
     x: f64,
@@ -45,6 +48,8 @@ struct Slime {
     /// 対象プレイヤーのidentity。範囲侵入で獲得、被弾で攻撃者に切替
     target: Option<String>,
     attack_cd: i64,
+    /// よろめきデバフの残りms(0以下=なし)。斬撃被弾でリフレッシュ
+    stagger_ms: i64,
     speed: f64,
     aggro_range: f64,
     attack_range: f64,
@@ -98,6 +103,7 @@ impl SlimeGimmick {
                 hp: button.hp,
                 target: None,
                 attack_cd: 0,
+                stagger_ms: 0,
                 speed: button.speed,
                 aggro_range: button.aggro_range,
                 attack_range: button.attack_range,
@@ -153,7 +159,19 @@ impl Script for SlimeGimmick {
                     return;
                 };
                 slime.hp = (slime.hp - DAMAGE_PER_HIT).max(0);
-                patch(&event.node, json!({ "hp": slime.hp }));
+                // 斬撃はよろめきデバフを与える(再被弾で残り時間リフレッシュ)
+                if event.kind.as_deref() == Some("slash") && slime.hp > 0 {
+                    slime.stagger_ms = STAGGER_MS;
+                    patch(
+                        &event.node,
+                        json!({ "hp": slime.hp, "buffs": [{
+                            "id": "stagger", "name": "よろめき", "kind": "debuff",
+                            "remainingMs": STAGGER_MS, "durationMs": STAGGER_MS
+                        }] }),
+                    );
+                } else {
+                    patch(&event.node, json!({ "hp": slime.hp }));
+                }
                 // 最後に攻撃してきたプレイヤーに対象を切り替える
                 if let Some(by) = &event.by {
                     slime.target = Some(by.clone());
@@ -179,6 +197,15 @@ impl Script for SlimeGimmick {
         // 同時侵入タイブレークも決定的になる
         let players = get_all_players();
         for (id, slime) in self.slimes.iter_mut() {
+            // よろめきの期限切れ。クライアントは受信済みremainingMsで自前カウントダウン
+            // するので、剥奪のpatch(空配列)だけを期限を跨いだ1回だけ送る
+            if slime.stagger_ms > 0 {
+                slime.stagger_ms -= dt;
+                if slime.stagger_ms <= 0 {
+                    slime.stagger_ms = 0;
+                    patch(id, json!({ "buffs": [] }));
+                }
+            }
             // 対象が退室していたら解除
             if let Some(target) = &slime.target {
                 if !players.iter().any(|p| &p.id == target) {

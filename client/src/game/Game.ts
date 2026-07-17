@@ -35,6 +35,7 @@ import { SceneRenderer } from '../world/SceneRenderer'
 import { buildNavGrid, parseWorld, type WorldDef } from '../world/WorldDef'
 import { fetchWorld, fetchWorlds } from '../world/worldApi'
 import { type ActionDef, BUILTIN_ACTIONS } from './actions'
+import { type BuffInfo, normalizeBuffs, type SelfBuffDef } from './buffs'
 import { EffectSystem } from './EffectSystem'
 import { registerBuiltinEffects } from './effects'
 import { acquireFlatMaterial, releaseFlatMaterial } from './materialPool'
@@ -69,6 +70,9 @@ const INTERACT_RANGE = 2.5
 const APPROACH_REPATH_DIST = 0.5
 /** 自分の最大HP。HPはクライアント権威(自分のHPは自分が管理する)。store初期値と対応 */
 const PLAYER_MAX_HP = 100
+/** ダッシュ(/dash)の効果時間と移動速度倍率。自分バフはクライアント権威 */
+const DASH_DURATION_MS = 10_000
+const DASH_SPEED_MULTIPLIER = 1.5
 
 interface ClickMarker {
   mesh: THREE.Mesh
@@ -120,6 +124,17 @@ export class Game {
   private selfHp = PLAYER_MAX_HP
   /** 戦闘不能中。移動・アクション等を止め、復活(respawn)で解除する */
   private dead = false
+  /** 自分に掛かっているバフ・デバフ(クライアント権威)。keyはバフid。storeへはスナップショットを流す */
+  private readonly selfBuffs = new Map<
+    string,
+    { info: BuffInfo; effects?: SelfBuffDef['effects'] }
+  >()
+  /**
+   * エンティティのバフ・デバフ(サーバー権威のノード属性buffs)のキャッシュ。keyはノードid。
+   * ワイヤのremainingMsは送信時点の残り時間なので、受信時にexpiresAtへ変換して保持する
+   * (pushTargetToStoreは選択変更時にも呼ばれ、その時点のノード属性値は陳腐化しているため)
+   */
+  private readonly targetBuffsCache = new Map<string, BuffInfo[]>()
   /** 射程外の対象への自動接近。射程に入るとcommandを再実行する(毎フレームupdateApproachで判定) */
   private pendingApproach: {
     kind: 'slash' | 'interact'
@@ -288,6 +303,11 @@ export class Game {
     this.selectedTargetId = null
     this.targetRing.clear()
     useAppStore.getState().setTarget(null)
+    // バフは旧ワールドのものなので全て剥がす。初期シーンの静的buffs属性を拾い直す
+    this.clearSelfBuffs()
+    this.targetBuffsCache.clear()
+    const buffStamp = performance.now()
+    for (const node of world.scene) this.stampBuffsFromTree(node, buffStamp)
     this.sceneRenderer?.dispose()
     this.world = world
     this.sceneRenderer = new SceneRenderer(world, worldUrl)
@@ -379,19 +399,36 @@ export class Game {
     if (!renderer) return
     switch (message.t) {
       case 'gpatch':
+        if ('buffs' in message.attrs) {
+          this.targetBuffsCache.set(
+            message.id,
+            normalizeBuffs(message.attrs.buffs, performance.now()),
+          )
+        }
         renderer.applyPatch(message.id, message.attrs)
         if (message.id === this.selectedTargetId) this.pushTargetToStore()
         break
-      case 'gsnap':
+      case 'gsnap': {
+        const receivedAt = performance.now()
+        for (const [id, attrs] of Object.entries(message.patches)) {
+          if ('buffs' in attrs) {
+            this.targetBuffsCache.set(id, normalizeBuffs(attrs.buffs, receivedAt))
+          }
+        }
+        for (const spawn of message.spawns ?? []) this.stampBuffsFromTree(spawn.node, receivedAt)
+        for (const id of message.despawns ?? []) this.targetBuffsCache.delete(id)
         renderer.applySnapshot(message.patches, message.spawns, message.despawns)
         if (message.spawns?.length || message.despawns?.length) this.markNavGridDirty()
         if (this.selectedTargetId) this.pushTargetToStore()
         break
+      }
       case 'gspawn':
+        this.stampBuffsFromTree(message.node, performance.now())
         renderer.applySpawn(message.parent, message.node)
         this.markNavGridDirty()
         break
       case 'gdespawn':
+        this.targetBuffsCache.delete(message.id)
         renderer.applyDespawn(message.id)
         this.markNavGridDirty()
         // 選択中のエンティティ(またはその祖先)が消えたら選択も自動解除される
@@ -436,6 +473,7 @@ export class Game {
   private die(): void {
     this.dead = true
     this.pendingApproach = null
+    this.clearSelfBuffs()
     this.avatar.setDead(true)
     const store = useAppStore.getState()
     store.setDead(true)
@@ -456,6 +494,87 @@ export class Game {
     const store = useAppStore.getState()
     store.setSelfHp(this.selfHp, PLAYER_MAX_HP)
     store.setDead(false)
+  }
+
+  /** 10秒間移動速度を上げるバフを自分に付与する(/dash)。戦闘不能中はthrow(CD返金) */
+  dash(): void {
+    if (this.dead) throw new Error('戦闘不能中は使えません')
+    this.addSelfBuff({
+      id: 'dash',
+      name: 'ダッシュ',
+      kind: 'buff',
+      durationMs: DASH_DURATION_MS,
+      effects: { speedMultiplier: DASH_SPEED_MULTIPLIER },
+    })
+  }
+
+  /** 自分にバフを付与する。同idは上書き=残時間リフレッシュ */
+  private addSelfBuff(def: SelfBuffDef): void {
+    const info: BuffInfo = {
+      id: def.id,
+      name: def.name,
+      kind: def.kind,
+      expiresAt: performance.now() + def.durationMs,
+      durationMs: def.durationMs,
+    }
+    this.selfBuffs.set(def.id, { info, effects: def.effects })
+    this.recomputeBuffEffects()
+    this.pushSelfBuffsToStore()
+  }
+
+  /** 期限切れの自分バフを剥がす。tick()から毎フレーム呼ばれる */
+  private updateSelfBuffs(): void {
+    if (this.selfBuffs.size === 0) return
+    const now = performance.now()
+    let removed = false
+    for (const [id, buff] of this.selfBuffs) {
+      if (buff.info.expiresAt !== null && now >= buff.info.expiresAt) {
+        this.selfBuffs.delete(id)
+        removed = true
+      }
+    }
+    if (removed) {
+      this.recomputeBuffEffects()
+      this.pushSelfBuffsToStore()
+    }
+  }
+
+  /** 自分バフを全て剥がす(死亡・ワールド切替)。効果も元に戻る */
+  private clearSelfBuffs(): void {
+    if (this.selfBuffs.size === 0) return
+    this.selfBuffs.clear()
+    this.recomputeBuffEffects()
+    this.pushSelfBuffsToStore()
+  }
+
+  /** 全バフの効果を集計してアバターへ反映する(冪等) */
+  private recomputeBuffEffects(): void {
+    let speed = 1
+    for (const buff of this.selfBuffs.values()) {
+      speed *= buff.effects?.speedMultiplier ?? 1
+    }
+    this.avatar.setSpeedMultiplier(speed)
+  }
+
+  private pushSelfBuffsToStore(): void {
+    useAppStore.getState().setSelfBuffs([...this.selfBuffs.values()].map((b) => b.info))
+  }
+
+  /**
+   * ノードツリーからbuffs属性を拾ってキャッシュに受信時刻でスタンプする
+   * (gspawn/gsnapのspawns・ワールド初期シーン用)
+   */
+  private stampBuffsFromTree(node: Record<string, unknown>, receivedAt: number): void {
+    if (typeof node.id === 'string' && node.buffs !== undefined) {
+      this.targetBuffsCache.set(node.id, normalizeBuffs(node.buffs, receivedAt))
+    }
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) {
+        if (typeof child === 'object' && child !== null) {
+          this.stampBuffsFromTree(child as Record<string, unknown>, receivedAt)
+        }
+      }
+    }
   }
 
   /**
@@ -542,6 +661,7 @@ export class Game {
       hp: hasHp ? (node.hp as number) : null,
       hpMax: hasHp ? (node.hpMax as number) : null,
       alive,
+      buffs: this.targetBuffsCache.get(id) ?? [],
     })
     const pos = this.sceneRenderer?.worldPosition(id)
     if (alive && pos) {
@@ -908,6 +1028,7 @@ export class Game {
     performAction: (name, target, tid) => this.performAction(name, target, tid),
     playEmote: (id) => this.playEmote(id),
     respawn: () => this.respawn(),
+    dash: () => this.dash(),
     setCameraFollow: (mode) => this.setCameraFollow(mode),
     snapCamera: () => {
       this.focus.copy(this.avatar.position)
@@ -1347,6 +1468,7 @@ export class Game {
     this.applySelfSpeaking(voice?.selfSpeaking ?? false)
 
     this.avatar.update(delta)
+    this.updateSelfBuffs()
     this.updateApproach()
     this.updateMarkers(delta)
     this.effects.update(delta)

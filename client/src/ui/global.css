@@ -79,6 +79,19 @@ body,
   transform: translateX(-50%);
 }
 
+/* 自分のバフ一覧: ステータスパネルの右隣 */
+.hud-anchor-self-buffs {
+  top: 12px;
+  left: 210px;
+}
+
+/* ターゲットのバフ一覧: ターゲットパネルの直下 */
+.hud-anchor-target-buffs {
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 /* 非表示要素(HUD編集モード中のみ描画される) */
 .hud-anchor.hud-hidden {
   opacity: 0.35;
@@ -166,6 +179,44 @@ body,
   line-height: 14px;
   color: #f2f5fa;
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+}
+
+/* --- バフ・デバフ一覧(自分/ターゲット共通のチップ表示) --- */
+
+.hud-bufflist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 240px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.hud-buff {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f2f5fa;
+  background: rgba(0, 0, 0, 0.55);
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+}
+
+/* 色はHPゲージ(hpColor)と同系: バフ=緑 / デバフ=赤 */
+.hud-buff-buff {
+  border: 1px solid #7cfc8a;
+}
+
+.hud-buff-debuff {
+  border: 1px solid #ff6b5e;
+}
+
+.hud-buff-time {
+  color: #a8b2c2;
+  font-weight: 400;
 }
 
 /* --- 接続情報(左上ステータス直下) --- */

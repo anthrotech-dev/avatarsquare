@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { BuffInfo } from '../game/buffs'
 import { sanitizeName, WHISPER_RADIUS_DEFAULT } from '../net/protocol'
 import {
   activateHotbar,
@@ -55,6 +56,22 @@ export interface SlotRef {
   index: number
 }
 
+/** setTargetの差分比較用。gpatchのたびに呼ばれるため無変化なら再レンダを起こさない */
+function sameBuffs(a: BuffInfo[], b: BuffInfo[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  return a.every((buff, i) => {
+    const other = b[i]
+    return (
+      buff.id === other.id &&
+      buff.name === other.name &&
+      buff.kind === other.kind &&
+      buff.expiresAt === other.expiresAt &&
+      buff.durationMs === other.durationMs
+    )
+  })
+}
+
 /**
  * 選択中ターゲットのHUD表示用スナップショット。Gameが選択変更・gpatch受信時に
  * 反映する(値の正はサーバー同期済みのシーンノード属性)
@@ -68,6 +85,8 @@ export interface TargetInfo {
   hpMax: number | null
   /** visible:falseで倒れている間はfalse(HUDをグレー表示) */
   alive: boolean
+  /** 対象に掛かっているバフ・デバフ(ノード属性buffsのスナップショット) */
+  buffs: BuffInfo[]
 }
 
 interface AppState {
@@ -96,6 +115,8 @@ interface AppState {
   /** 自分のHP(正はGame。HUD表示用スナップショット)。Game.tsのPLAYER_MAX_HPと対応 */
   selfHp: number
   selfHpMax: number
+  /** 自分に掛かっているバフ・デバフ(正はGame。HUD表示用スナップショット) */
+  selfBuffs: BuffInfo[]
   /** 戦闘不能中(復活ダイアログの表示条件) */
   dead: boolean
   /** 全ホットバー(非アクティブ=表示から削除済みの設定も保持する) */
@@ -160,6 +181,7 @@ interface AppState {
   setPosition: (position: { x: number; z: number }) => void
   setTarget: (target: TargetInfo | null) => void
   setSelfHp: (selfHp: number, selfHpMax: number) => void
+  setSelfBuffs: (selfBuffs: BuffInfo[]) => void
   setDead: (dead: boolean) => void
   setHotbarSlot: (ref: SlotRef, slot: HotbarSlot | null) => void
   swapHotbarSlots: (a: SlotRef, b: SlotRef) => void
@@ -216,6 +238,7 @@ export const useAppStore = create<AppState>((set) => ({
   position: { x: 0, z: 0 },
   target: null,
   selfHp: 100,
+  selfBuffs: [],
   selfHpMax: 100,
   dead: false,
   hotbars: loadHotbars(),
@@ -283,13 +306,15 @@ export const useAppStore = create<AppState>((set) => ({
         prev.name === target.name &&
         prev.hp === target.hp &&
         prev.hpMax === target.hpMax &&
-        prev.alive === target.alive
+        prev.alive === target.alive &&
+        sameBuffs(prev.buffs, target.buffs)
       ) {
         return {}
       }
       return { target }
     }),
   setSelfHp: (selfHp, selfHpMax) => set({ selfHp, selfHpMax }),
+  setSelfBuffs: (selfBuffs) => set({ selfBuffs }),
   setDead: (dead) => set({ dead }),
   setHotbarSlot: (ref, slot) =>
     set((state) => {

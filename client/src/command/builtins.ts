@@ -13,6 +13,9 @@ const SLASH_RANGE = 2.2
 /** 攻撃スキル(斬撃・射撃)のクールダウン */
 const SKILL_COOLDOWN_MS = 3000
 
+/** ダッシュのクールダウン(効果時間10秒より長く=常時上げっぱなし不可) */
+const DASH_COOLDOWN_MS = 15_000
+
 function parseNumber(value: string | undefined): number | null {
   if (value === undefined) return null
   const n = Number(value)
@@ -118,6 +121,15 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       execute(ctx) {
         ctx.api.respawn()
         ctx.out.print('復活しました')
+      },
+    },
+    {
+      name: 'dash',
+      description: '10秒間、移動速度が上がる',
+      cooldownMs: DASH_COOLDOWN_MS,
+      execute(ctx) {
+        ctx.api.dash()
+        ctx.out.print('ダッシュ!(10秒間 移動速度アップ)')
       },
     },
     {

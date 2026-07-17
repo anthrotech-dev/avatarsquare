@@ -39,6 +39,8 @@ export class Avatar {
   private walkPhase = 0
   private vy = 0
   private dead = false
+  /** 移動速度倍率(バフで一時変更される。1=通常) */
+  private speedMultiplier = 1
   /** 口パクの開き具合(0〜1)。VoiceChatが毎フレーム更新する */
   private mouthOpen = 0
   // ネームプレートは名前が付くまで生成されないため、VC状態は別途保持して生成時に適用する
@@ -75,6 +77,11 @@ export class Avatar {
   setPath(points: THREE.Vector3[]): void {
     this.path = points
     this.pathIndex = 0
+  }
+
+  /** 移動速度倍率を設定する(バフの効果集計から呼ばれる) */
+  setSpeedMultiplier(value: number): void {
+    this.speedMultiplier = Math.max(0, value)
   }
 
   /**
@@ -293,7 +300,7 @@ export class Avatar {
 
   private updateMovement(delta: number): void {
     this.moving = false
-    let remaining = WALK_SPEED * delta
+    let remaining = WALK_SPEED * this.speedMultiplier * delta
 
     while (remaining > 0 && this.pathIndex < this.path.length) {
       const target = this.path[this.pathIndex]

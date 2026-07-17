@@ -15,6 +15,8 @@ export interface GameCommandAPI {
   performAction(name: string, target?: { x: number; z: number }, tid?: string): void
   /** スポーン地点で復活する。戦闘不能でなければthrow(コマンド側で表示) */
   respawn(): void
+  /** 10秒間移動速度を上げるバフを自分に付与する。戦闘不能中はthrow(CD返金) */
+  dash(): void
   playEmote(id: string): Promise<void>
   setCameraFollow(mode: 'on' | 'off' | 'toggle'): void
   snapCamera(): void

@@ -13,8 +13,10 @@ import { LoadingOverlay } from './hud/LoadingOverlay'
 import { MainMenu, useEscMenu } from './hud/MainMenu'
 import { PlayersWindow } from './hud/PlayersWindow'
 import { ReviveDialog } from './hud/ReviveDialog'
+import { SelfBuffsPanel } from './hud/SelfBuffsPanel'
 import { SettingsWindow } from './hud/SettingsPanel'
 import { StatusPanel } from './hud/StatusPanel'
+import { TargetBuffsPanel } from './hud/TargetBuffsPanel'
 import { TargetPanel } from './hud/TargetPanel'
 import { VoicePanel } from './hud/VoicePanel'
 import { VoiceWindow } from './hud/VoiceWindow'
@@ -91,6 +93,12 @@ export function App() {
       </HudElement>
       <HudElement id="target" label="ターゲット" defaultAnchor={{ h: 'center', v: 'top' }}>
         <TargetPanel />
+      </HudElement>
+      <HudElement id="self-buffs" label="バフ(自分)">
+        <SelfBuffsPanel />
+      </HudElement>
+      <HudElement id="target-buffs" label="バフ(対象)" defaultAnchor={{ h: 'center', v: 'top' }}>
+        <TargetBuffsPanel />
       </HudElement>
       <HudElement id="chat" label="チャット" defaultAnchor={{ h: 'left', v: 'bottom' }}>
         <ChatWindow />

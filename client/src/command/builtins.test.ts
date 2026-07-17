@@ -130,6 +130,34 @@ describe('/attack(対象指定スキル)と/target', () => {
   })
 })
 
+describe('/dash(自分バフスキル)', () => {
+  it('発動するとCDが始まり、CD中の再実行は黙って無視される', async () => {
+    const registry = makeRegistry()
+    const { ctx, api, errors } = makeTestContext()
+    await registry.execute('/dash', ctx)
+    expect(api.dash).toHaveBeenCalledTimes(1)
+    await registry.execute('/dash', ctx)
+    expect(api.dash).toHaveBeenCalledTimes(1)
+    expect(errors).toHaveLength(0)
+  })
+
+  it('発動失敗(戦闘不能でthrow)はエラー表示になりCDを消費しない', async () => {
+    const registry = makeRegistry()
+    const { ctx, api, errors } = makeTestContext({
+      dash: vi.fn(() => {
+        throw new Error('戦闘不能中は使えません')
+      }),
+    })
+    await registry.execute('/dash', ctx)
+    expect(errors[0]).toContain('戦闘不能中')
+    // CD返金の確認: 直後の再実行が通る
+    const { ctx: ctx2, api: api2 } = makeTestContext()
+    await registry.execute('/dash', ctx2)
+    expect(api2.dash).toHaveBeenCalledTimes(1)
+    expect(api.dash).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('ボイスチャットコマンド', () => {
   it('/vc on|off|toggle がAPIへ渡る', async () => {
     for (const mode of ['on', 'off', 'toggle'] as const) {

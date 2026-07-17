@@ -39,7 +39,7 @@ export const DEFAULT_HOTBAR: (HotbarSlot | null)[] = [
   { command: '/emote VRMA_03', label: 'ピース' },
   { command: '/emote VRMA_05', label: '回る' },
   { command: '/emote VRMA_07', label: '屈伸' },
-  null,
+  { command: '/dash', label: 'ダッシュ' },
   null,
   null,
   { command: '/settings', label: '設定' },
