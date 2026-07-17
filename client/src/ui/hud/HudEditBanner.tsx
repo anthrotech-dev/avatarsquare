@@ -32,7 +32,7 @@ export function HudEditBanner() {
         float.onPointerDown(e)
       }}
     >
-      <span>HUD編集中 — ドラッグで移動 / 右クリックで設定</span>
+      <span>HUD編集中 — ドラッグで移動 / ⚙で設定</span>
       <button type="button" onClick={addHotbar}>
         ホットバーを追加
       </button>

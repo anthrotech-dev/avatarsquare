@@ -72,7 +72,7 @@ export function useHudFloat(
     },
     onMove: setDragPos,
     onEnd: (pos) => {
-      // ドラッグではアンカーを変えない(変更は右クリックメニューのみ)
+      // ドラッグではアンカーを変えない(変更は歯車の設定メニューのみ)
       const placement = topLeftToPlacement(pos, anchor, rectSize(), viewport())
       setHudPlacement(id, clampHudPlacement(placement, rectSize(), viewport()))
       setDragPos(null)

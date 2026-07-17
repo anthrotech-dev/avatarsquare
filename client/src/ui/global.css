@@ -419,19 +419,41 @@ body,
   touch-action: none;
 }
 
-/* 要素名は要素のすぐ外の右上に出す */
+/* 要素名は要素のすぐ外の右上に出す。
+   ラベル自体はpointer-events:noneのまま(積み上げホットバーでは上のバーに重なり
+   ドラッグを妨げるため)、歯車ボタンだけクリック可能にする */
 .hud-edit-label {
   position: absolute;
   bottom: 100%;
   right: 0;
   margin-bottom: 4px;
-  padding: 2px 10px;
+  padding: 2px 6px 2px 10px;
   border-radius: 6px;
   background: rgba(20, 24, 32, 0.8);
   color: #cfe0ff;
   font-size: 12px;
   pointer-events: none;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.game-container button.hud-edit-gear {
+  pointer-events: auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #cfe0ff;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.game-container button.hud-edit-gear:hover {
+  background: #3a4a5f;
 }
 
 /* 画面上端に近い要素はラベルが見切れるので下側に出す */
@@ -441,13 +463,14 @@ body,
   margin: 4px 0 0;
 }
 
-/* 編集モードの右クリックメニュー(バックドロップで外側クリックを拾う) */
+/* 編集モードの設定メニュー(バックドロップで外側クリックを拾う) */
 .hud-context-backdrop {
   position: fixed;
   inset: 0;
   z-index: 20;
 }
 
+/* body直下にポータル描画されるため.game-containerのスタイルを継承しない(自己完結させる) */
 .hud-context-menu {
   position: fixed;
   display: flex;
@@ -458,6 +481,7 @@ body,
   border-radius: 8px;
   background: rgba(26, 32, 44, 0.95);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  color: #e8ecf2;
 }
 
 .hud-context-menu > button {
@@ -466,6 +490,9 @@ body,
   text-align: left;
   padding: 7px 10px;
   border-radius: 5px;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .hud-context-menu > button:hover {

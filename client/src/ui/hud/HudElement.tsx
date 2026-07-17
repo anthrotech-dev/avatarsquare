@@ -14,7 +14,7 @@ interface Props {
   anchorStyle?: React.CSSProperties
   /** アンカー基準の初期値。CSSデフォルト位置に合わせる(省略時は左上) */
   defaultAnchor?: HudAnchor
-  /** 編集モードの右クリックメニューに足す要素固有の項目 */
+  /** 編集モードの設定メニューに足す要素固有の項目 */
   menuItems?: ContextMenuItem[]
   children: React.ReactNode
 }
@@ -23,7 +23,7 @@ interface Props {
  * HUD要素の配置ラッパー。カスタム配置(hudLayout)があればそれを、
  * なければCSSのデフォルトアンカー(.hud-anchor-<id>)を使う。
  * HUD編集モード中はオーバーレイで内側の操作を遮断し、ドラッグで移動、
- * 右クリックで設定メニュー(アンカー基準・可視切替など)を出せる。
+ * ラベル横の歯車ボタンで設定メニュー(アンカー基準・可視切替など)を出せる。
  */
 export function HudElement({
   id,
@@ -55,15 +55,7 @@ export function HudElement({
       {children}
       {editMode && (
         <>
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: マウス専用のドラッグ/右クリック用オーバーレイ */}
-          <div
-            className="hud-edit-overlay"
-            onPointerDown={float.onPointerDown}
-            onContextMenu={(e) => {
-              e.preventDefault()
-              setMenuPos({ x: e.clientX, y: e.clientY })
-            }}
-          />
+          <div className="hud-edit-overlay" onPointerDown={float.onPointerDown} />
           {/* 画面上端ではラベルが見切れるため下側に切り替える */}
           <span
             className={
@@ -74,6 +66,17 @@ export function HudElement({
           >
             {label}
             {!visible && '(非表示)'}
+            <button
+              type="button"
+              className="hud-edit-gear"
+              title="設定"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                setMenuPos({ x: rect.left, y: rect.bottom + 4 })
+              }}
+            >
+              ⚙
+            </button>
           </span>
           {menuPos && (
             <HudContextMenu

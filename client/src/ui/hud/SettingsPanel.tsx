@@ -102,7 +102,7 @@ export function SettingsWindow({ game }: Props) {
           </div>
           <div>
             HUDレイアウト編集(/hud
-            edit)で要素の移動、ホットバーの追加・削除、右クリックで非表示・キー割当ができます
+            edit)で要素の移動、ホットバーの追加・削除、⚙ボタンで非表示・キー割当ができます
           </div>
           <div>カメラ固定中は画面端で視点スクロール(/camera で切替)</div>
           <div>コマンドは「/」始まり(/help で一覧)</div>
