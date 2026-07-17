@@ -134,7 +134,10 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
         }
         const { x, z } = ctx.api.getPosition()
         if (Math.hypot(target.x - x, target.z - z) - target.radius > SLASH_RANGE) {
-          ctx.out.error(`「${target.name}」は射程外です。近づいてください`)
+          // 射程外: 自動で接近し、射程に入ったら/attackを再実行する(CDはその時に開始)
+          if (!ctx.api.approachTarget(target.id, SLASH_RANGE, target.radius, '/attack')) {
+            ctx.out.error(`「${target.name}」へは到達できません`)
+          }
           return false
         }
         ctx.api.performAction('slash', { x: target.x, z: target.z }, target.id)

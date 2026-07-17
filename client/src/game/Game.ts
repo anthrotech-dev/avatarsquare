@@ -65,6 +65,8 @@ const PAN_LIMIT = 28 // 視点移動できる範囲(マップ端まで)
 const SELF_RING_ID = '__self'
 /** クリックインタラクトが届く距離(m)。サーバー側の検証(3m)より少し狭い */
 const INTERACT_RANGE = 2.5
+/** 自動接近中、対象がこの距離(m)を超えて動いたら経路を引き直す */
+const APPROACH_REPATH_DIST = 0.5
 /** 自分の最大HP。HPはクライアント権威(自分のHPは自分が管理する)。store初期値と対応 */
 const PLAYER_MAX_HP = 100
 
@@ -118,6 +120,18 @@ export class Game {
   private selfHp = PLAYER_MAX_HP
   /** 戦闘不能中。移動・アクション等を止め、復活(respawn)で解除する */
   private dead = false
+  /** 射程外の対象への自動接近。射程に入るとcommandを再実行する(毎フレームupdateApproachで判定) */
+  private pendingApproach: {
+    kind: 'slash' | 'interact'
+    targetId: string
+    /** 発動判定: dist - radius <= range(interactはradius=0で中心間距離) */
+    range: number
+    radius: number
+    /** 到着時に再実行するコマンド行(例: '/attack', '/interact door1') */
+    command: string
+    /** 経路探索したときの対象位置。動く対象の追跡(再探索)判定に使う */
+    goal: { x: number; z: number }
+  } | null = null
   /** 現在発話中のリモート参加者(SFU判定)。差分でネームプレート表示を切り替える */
   private speakingIds = new Set<string>()
   /** 自分の発話中(ローカルのマイク音量による即時判定) */
@@ -280,7 +294,7 @@ export class Game {
     this.scene.add(this.sceneRenderer.group)
     // 初期シーンで事前計算(以後の動的spawn/despawnはmarkNavGridDirtyで再構築)
     this.navGrid = buildNavGrid(world)
-    this.avatar.setPath([])
+    this.stopMovement()
     this.avatar.position.set(world.spawn.x, 0, world.spawn.z)
     this.focus.copy(this.avatar.position)
     // 戦闘不能のままワールドを切り替えた場合は全快で入り直す
@@ -421,6 +435,7 @@ export class Game {
   /** HP0で戦闘不能になる。移動を止めて倒れ、復活ダイアログを出す */
   private die(): void {
     this.dead = true
+    this.pendingApproach = null
     this.avatar.setDead(true)
     const store = useAppStore.getState()
     store.setDead(true)
@@ -434,7 +449,7 @@ export class Game {
     this.dead = false
     this.selfHp = PLAYER_MAX_HP
     this.avatar.setDead(false)
-    this.avatar.setPath([])
+    this.stopMovement()
     if (this.world) this.avatar.position.set(this.world.spawn.x, 0, this.world.spawn.z)
     // カメラ追従OFFでも復帰位置を見失わないようにスナップする
     this.focus.copy(this.avatar.position)
@@ -463,6 +478,10 @@ export class Game {
     if (id !== null) {
       const node = this.sceneRenderer?.getNode(id)
       if (node?.targetable !== true) throw new Error(`「${id}」は対象にできません`)
+    }
+    // 対象変更・解除で攻撃の自動接近を中止する(interactの接近は選択と無関係)
+    if (this.pendingApproach?.kind === 'slash' && id !== this.pendingApproach.targetId) {
+      this.pendingApproach = null
     }
     this.selectedTargetId = id
     this.pushTargetToStore()
@@ -558,10 +577,18 @@ export class Game {
     if (this.dead) throw new Error('戦闘不能です。/respawn で復活してください')
     const node = this.sceneRenderer?.getNode(id)
     if (!node?.interactable) throw new Error(`「${id}」はインタラクトできません`)
-    const x = typeof node.x === 'number' ? node.x : 0
-    const z = typeof node.z === 'number' ? node.z : 0
+    // 距離はワールド座標で判定する(ネストノード対応。接近判定updateApproachと同じ基準)
+    const pos = this.sceneRenderer?.worldPosition(id)
+    const x = pos?.x ?? 0
+    const z = pos?.z ?? 0
     const distance = Math.hypot(x - this.avatar.position.x, z - this.avatar.position.z)
-    if (distance > INTERACT_RANGE) throw new Error('離れすぎています。近づいてください')
+    if (distance > INTERACT_RANGE) {
+      // 射程外: エラーにせず自動で接近し、射程に入ったら再実行する
+      if (!this.startApproach('interact', id, INTERACT_RANGE, 0, `/interact ${id}`)) {
+        throw new Error('そこへは到達できません')
+      }
+      return
+    }
     // ポータル(portal属性=行き先ワールドid)はクライアント側でワールド切替する。
     // サーバーのwasmスクリプトは関与しない(切替失敗は/interactのcatchで表示される)
     if (typeof node.portal === 'string') {
@@ -876,7 +903,7 @@ export class Game {
 
   private readonly commandAPI: GameCommandAPI = {
     moveTo: (x, z) => this.moveTo(x, z),
-    stop: () => this.avatar.setPath([]),
+    stop: () => this.stopMovement(),
     jump: () => this.avatar.jump(),
     performAction: (name, target, tid) => this.performAction(name, target, tid),
     playEmote: (id) => this.playEmote(id),
@@ -925,6 +952,8 @@ export class Game {
     getCurrentWorld: () => useAppStore.getState().world,
     switchWorld: (id) => this.switchWorld(id),
     interact: (id) => this.interactNode(id),
+    approachTarget: (id, range, radius, command) =>
+      this.startApproach('slash', id, range, radius, command),
     selectTarget: (id) => this.selectTarget(id),
     acquireTarget: () => this.acquireTarget(),
     focusChat: () => useAppStore.getState().requestChatFocus(),
@@ -948,6 +977,7 @@ export class Game {
 
   /** A*経路探索して移動を開始する。戦闘不能中・到達不能(またはワールド未読込)ならfalse */
   moveTo(x: number, z: number): boolean {
+    this.pendingApproach = null
     if (this.dead) return false
     if (!this.navGrid) return false
     const path = this.navGrid.findPath(
@@ -960,6 +990,73 @@ export class Game {
     const dest = path[path.length - 1]
     this.addMarker(new THREE.Vector3(dest.x, 0, dest.z))
     return true
+  }
+
+  /** 移動と自動接近を中止する */
+  private stopMovement(): void {
+    this.pendingApproach = null
+    this.avatar.setPath([])
+  }
+
+  /**
+   * 射程外の対象へ自動接近を開始する。射程に入るとcommandを再実行する。
+   * 対象位置へ経路探索し(塞がったセルはfindPathが最寄りの通行可能セルへ吸着)、
+   * 経路の終端ではなく毎フレームの射程判定(updateApproach)で早期に停止・発動する
+   */
+  private startApproach(
+    kind: 'slash' | 'interact',
+    targetId: string,
+    range: number,
+    radius: number,
+    command: string,
+  ): boolean {
+    const pos = this.sceneRenderer?.worldPosition(targetId)
+    if (!pos) return false
+    if (!this.moveTo(pos.x, pos.z)) return false // 先頭でpendingApproachもクリアされる
+    this.pendingApproach = { kind, targetId, range, radius, command, goal: { x: pos.x, z: pos.z } }
+    return true
+  }
+
+  /** 自動接近の毎フレーム判定。射程に入った瞬間に停止してコマンドを再実行する */
+  private updateApproach(): void {
+    const pending = this.pendingApproach
+    if (!pending) return
+    const node = this.sceneRenderer?.getNode(pending.targetId)
+    const pos = this.sceneRenderer?.worldPosition(pending.targetId)
+    if (!node || node.visible === false || !pos) {
+      // 接近中に対象が消えた(despawn・撃破)
+      this.pendingApproach = null
+      useAppStore.getState().appendChat({ kind: 'error', text: '対象がいなくなりました' })
+      return
+    }
+    const dist = Math.hypot(pos.x - this.avatar.position.x, pos.z - this.avatar.position.z)
+    if (dist - pending.radius <= pending.range) {
+      // 経路の終端まで歩かず、射程に入った瞬間に停止して発動する(行き過ぎ防止)
+      this.pendingApproach = null
+      this.avatar.setPath([])
+      void this.dispatch(pending.command)
+      return
+    }
+    if (Math.hypot(pos.x - pending.goal.x, pos.z - pending.goal.z) > APPROACH_REPATH_DIST) {
+      // 対象が動いた: 経路を引き直して追跡する
+      if (
+        !this.startApproach(
+          pending.kind,
+          pending.targetId,
+          pending.range,
+          pending.radius,
+          pending.command,
+        )
+      ) {
+        useAppStore.getState().appendChat({ kind: 'error', text: 'そこへは到達できません' })
+      }
+      return
+    }
+    if (!this.avatar.isMoving) {
+      // 経路を歩き切っても射程外(到達できる最寄り地点が遠い)
+      this.pendingApproach = null
+      useAppStore.getState().appendChat({ kind: 'error', text: 'それ以上近づけません' })
+    }
   }
 
   private sendPosition(delta: number): void {
@@ -990,6 +1087,8 @@ export class Game {
    */
   performAction(name: string, target?: { x: number; z: number }, tid?: string): void {
     if (this.dead) return
+    // 実際に発動したアクションは進行中の自動接近を上書きする
+    this.pendingApproach = null
     const action = this.actions.get(name)
     if (!action) return
     if (action.stopsMovement) this.avatar.setPath([])
@@ -1248,6 +1347,7 @@ export class Game {
     this.applySelfSpeaking(voice?.selfSpeaking ?? false)
 
     this.avatar.update(delta)
+    this.updateApproach()
     this.updateMarkers(delta)
     this.effects.update(delta)
     this.sceneRenderer?.update(delta) // 動的ノードの位置パッチ補間

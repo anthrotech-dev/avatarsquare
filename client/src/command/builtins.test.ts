@@ -73,13 +73,31 @@ describe('/attack(対象指定スキル)と/target', () => {
     expect(api2.performAction).toHaveBeenCalledTimes(1)
   })
 
-  it('射程外(距離-半径 > 2.2m)なら発動しない', async () => {
+  it('射程外(距離-半径 > 2.2m)なら発動せず自動接近を開始する(CDは返金)', async () => {
+    const registry = makeRegistry()
     const { ctx, api, errors } = makeTestContext({
       acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 3, radius: 0.5 })),
     })
+    await registry.execute('/attack', ctx)
+    expect(api.performAction).not.toHaveBeenCalled()
+    expect(api.approachTarget).toHaveBeenCalledWith('scarecrow', 2.2, 0.5, '/attack')
+    expect(errors).toHaveLength(0)
+    // CD返金の確認: 射程内に入れば直後の再実行が通る
+    const { ctx: ctx2, api: api2 } = makeTestContext({
+      acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 1, radius: 0.5 })),
+    })
+    await registry.execute('/attack', ctx2)
+    expect(api2.performAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('射程外かつ到達不能(接近開始失敗)ならエラーを表示する', async () => {
+    const { ctx, api, errors } = makeTestContext({
+      acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 3, radius: 0.5 })),
+      approachTarget: vi.fn(() => false),
+    })
     await makeRegistry().execute('/attack', ctx)
     expect(api.performAction).not.toHaveBeenCalled()
-    expect(errors[0]).toContain('射程外')
+    expect(errors[0]).toContain('到達できません')
   })
 
   it('半径ぶんで射程に届けば発動し、対象座標とtidを渡す', async () => {

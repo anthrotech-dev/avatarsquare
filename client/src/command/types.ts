@@ -63,6 +63,11 @@ export interface GameCommandAPI {
    * 対象がない・インタラクト不可・離れすぎはthrow(コマンド側で表示)
    */
   interact(id: string): void
+  /**
+   * 射程外の対象へ自動接近し、射程(dist - radius <= range)に入ったら
+   * commandを再実行する。戦闘不能・経路なしはfalse
+   */
+  approachTarget(targetId: string, range: number, radius: number, command: string): boolean
   /** 対象を選択する(null=解除)。targetableでないノードはthrow(コマンド側で表示) */
   selectTarget(id: string | null): void
   /**
