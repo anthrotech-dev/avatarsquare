@@ -15,6 +15,9 @@
 use asq_sdk::{despawn, json, listen, log, patch, spawn, Event, Script, Value};
 
 const DAMAGE_PER_HIT: i64 = 10;
+/// 斬撃(kind=slash)被弾で付くよろめきデバフの持続時間。表示専用(slimeと同じ規約)。
+/// ノード属性buffsの汎用規約(remainingMs=送信時点の残り時間)でクライアントに配る
+const STAGGER_MS: i64 = 5000;
 
 struct Target {
     hp: i64,
@@ -28,6 +31,8 @@ struct Target {
     live_id: String,
     /// 復活の世代。スポーンごとに+1してid衝突を避ける
     gen: u32,
+    /// よろめきデバフの残りms(0以下=なし)。斬撃被弾でリフレッシュ
+    stagger_ms: i64,
 }
 
 #[derive(Default)]
@@ -70,6 +75,7 @@ impl Script for Scarecrow {
                 template: node.clone(),
                 live_id: id.to_string(),
                 gen: 0,
+                stagger_ms: 0,
             });
             listen(id, "hit");
             log(&format!("scarecrow ready: {id} (hp {max_hp})"));
@@ -88,9 +94,23 @@ impl Script for Scarecrow {
             return;
         }
         target.hp = (target.hp - DAMAGE_PER_HIT).max(0);
-        patch(&event.node, json!({ "hp": target.hp }));
+        // 斬撃はよろめきデバフを与える(再被弾で残り時間リフレッシュ。slimeと同じ規約)
+        if event.kind.as_deref() == Some("slash") && target.hp > 0 {
+            target.stagger_ms = STAGGER_MS;
+            patch(
+                &event.node,
+                json!({ "hp": target.hp, "buffs": [{
+                    "id": "stagger", "name": "よろめき", "kind": "debuff",
+                    "remainingMs": STAGGER_MS, "durationMs": STAGGER_MS
+                }] }),
+            );
+        } else {
+            patch(&event.node, json!({ "hp": target.hp }));
+        }
         if target.hp == 0 {
             target.down_left = target.respawn_ms;
+            // 復活後は新ノード(テンプレート由来)なのでデバフは持ち越さない
+            target.stagger_ms = 0;
             despawn(&event.node);
         }
     }
@@ -98,6 +118,14 @@ impl Script for Scarecrow {
     fn on_tick(&mut self, dt_ms: u32) {
         for target in self.targets.iter_mut() {
             if target.hp > 0 {
+                // よろめきの期限切れ。剥奪のpatch(空配列)だけを期限を跨いだ1回だけ送る
+                if target.stagger_ms > 0 {
+                    target.stagger_ms -= dt_ms as i64;
+                    if target.stagger_ms <= 0 {
+                        target.stagger_ms = 0;
+                        patch(&target.live_id, json!({ "buffs": [] }));
+                    }
+                }
                 continue;
             }
             target.down_left -= dt_ms as i64;

@@ -11,6 +11,7 @@ const ACTIONS: HotbarSlot[] = [
   { command: '/jump', label: 'ジャンプ' },
   { command: '/attack', label: '斬撃' },
   { command: '/shoot', label: '射撃' },
+  { command: '/dash', label: 'ダッシュ' },
   { command: '/stop', label: '停止' },
   { command: '/where', label: '座標表示' },
   { command: '/camera toggle', label: 'カメラ切替' },
