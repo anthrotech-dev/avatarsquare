@@ -222,7 +222,9 @@ export class Game {
     this.renderer.domElement.addEventListener('mousemove', this.onMouseMove)
     this.renderer.domElement.addEventListener('mouseleave', this.onMouseLeave)
     this.renderer.domElement.addEventListener('mousedown', this.onMouseDown)
-    this.renderer.domElement.addEventListener('mouseup', this.onMouseUp)
+    window.addEventListener('mousedown', this.suppressNavButtons, { capture: true })
+    window.addEventListener('mouseup', this.suppressNavButtons, { capture: true })
+    window.addEventListener('auxclick', this.suppressNavButtons, { capture: true })
     window.addEventListener('keydown', this.onKeyDown)
     // リロード・タブ閉じ時に明示的に切断する(接続処理との競合による内部エラー防止)
     window.addEventListener('pagehide', this.onPageHide)
@@ -1269,7 +1271,9 @@ export class Game {
     this.renderer.domElement.removeEventListener('mousemove', this.onMouseMove)
     this.renderer.domElement.removeEventListener('mouseleave', this.onMouseLeave)
     this.renderer.domElement.removeEventListener('mousedown', this.onMouseDown)
-    this.renderer.domElement.removeEventListener('mouseup', this.onMouseUp)
+    window.removeEventListener('mousedown', this.suppressNavButtons, { capture: true })
+    window.removeEventListener('mouseup', this.suppressNavButtons, { capture: true })
+    window.removeEventListener('auxclick', this.suppressNavButtons, { capture: true })
     window.removeEventListener('keydown', this.onKeyDown)
     window.removeEventListener('pagehide', this.onPageHide)
     this.resizeObserver.disconnect()
@@ -1344,8 +1348,12 @@ export class Game {
     if (event.button === 2) this.suppressNextContextMenu = true
   }
 
-  /** 戻る/進むボタンにバインドがある場合、ブラウザの履歴移動(mouseup時)を抑止する */
-  private onMouseUp = (event: MouseEvent): void => {
+  /**
+   * 戻る/進むボタンにバインドがある間、ブラウザの履歴移動を抑止する。
+   * 発動タイミング(mousedown/mouseup/auxclick)がブラウザごとに違うため全部叩き、
+   * HUD上にカーソルがあっても効くようwindowのcaptureフェーズで受ける
+   */
+  private suppressNavButtons = (event: MouseEvent): void => {
     if (event.button < 3) return
     const bound = useAppStore
       .getState()

@@ -45,6 +45,11 @@ export function HotbarConfig({ seq }: { seq: number }) {
       if (event.button === 0) return
       event.preventDefault()
       event.stopPropagation()
+      // 割当と同時にキャプチャが終わりこのeffectのリスナーは外れるため、
+      // 直後のmouseup/auxclick(戻る/進むボタンの履歴移動がここで発動する)は
+      // 一回限りのリスナーで飲み込む
+      window.addEventListener('mouseup', swallow, { capture: true, once: true })
+      window.addEventListener('auxclick', swallow, { capture: true, once: true })
       assign({
         code: mouseCode(event.button),
         shift: event.shiftKey,
