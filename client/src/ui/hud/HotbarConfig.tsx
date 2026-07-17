@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
-import { findKeybindConflicts, formatKeybind, type SlotKeybind } from '../../state/keybinds'
+import {
+  findKeybindConflicts,
+  formatKeybind,
+  mouseCode,
+  type SlotKeybind,
+} from '../../state/keybinds'
 import { useAppStore } from '../../state/store'
 import { FloatingWindow } from './FloatingWindow'
 
@@ -12,9 +17,13 @@ export function HotbarConfig({ seq }: { seq: number }) {
   const setHudDetailOpen = useAppStore((s) => s.setHudDetailOpen)
   const [capturing, setCapturing] = useState<number | null>(null)
 
-  // キャプチャ中はcaptureフェーズでkeydownを奪い、Game側や他のリスナーに流さない
+  // キャプチャ中はcaptureフェーズでkeydown/mousedownを奪い、Game側や他のリスナーに流さない
   useEffect(() => {
     if (capturing === null) return
+    const assign = (bind: SlotKeybind) => {
+      setHotbarKey({ seq, index: capturing }, bind)
+      setCapturing(null)
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       event.preventDefault()
       event.stopPropagation()
@@ -24,19 +33,40 @@ export function HotbarConfig({ seq }: { seq: number }) {
       }
       // 修飾キー単独は確定にせず押下継続を待つ
       if (MODIFIER_CODES.some((mod) => event.code.startsWith(mod))) return
-      setHotbarKey(
-        { seq, index: capturing },
-        {
-          code: event.code,
-          shift: event.shiftKey,
-          ctrl: event.ctrlKey,
-          alt: event.altKey,
-        },
-      )
-      setCapturing(null)
+      assign({
+        code: event.code,
+        shift: event.shiftKey,
+        ctrl: event.ctrlKey,
+        alt: event.altKey,
+      })
+    }
+    const onMouseDown = (event: MouseEvent) => {
+      // 左クリックはUI操作・対象選択と区別できないため割当対象にしない
+      if (event.button === 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      assign({
+        code: mouseCode(event.button),
+        shift: event.shiftKey,
+        ctrl: event.ctrlKey,
+        alt: event.altKey,
+      })
+    }
+    // 右クリック確定時のコンテキストメニューや、auxclick経由の既定動作も抑止する
+    const swallow = (event: Event) => {
+      event.preventDefault()
+      event.stopPropagation()
     }
     window.addEventListener('keydown', onKeyDown, { capture: true })
-    return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
+    window.addEventListener('mousedown', onMouseDown, { capture: true })
+    window.addEventListener('contextmenu', swallow, { capture: true })
+    window.addEventListener('auxclick', swallow, { capture: true })
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, { capture: true })
+      window.removeEventListener('mousedown', onMouseDown, { capture: true })
+      window.removeEventListener('contextmenu', swallow, { capture: true })
+      window.removeEventListener('auxclick', swallow, { capture: true })
+    }
   }, [capturing, seq, setHotbarKey])
 
   const hotbar = hotbars.find((h) => h.seq === seq)
@@ -73,7 +103,7 @@ export function HotbarConfig({ seq }: { seq: number }) {
               </span>
               <span className="hud-keybind-key">{formatKeybind(bind) || '未割当'}</span>
               <button type="button" onClick={() => setCapturing(capturing === i ? null : i)}>
-                {capturing === i ? 'キーを入力... (Esc)' : 'キーを押して設定'}
+                {capturing === i ? 'キー/ボタンを入力... (Esc)' : 'キーを押して設定'}
               </button>
               <button
                 type="button"

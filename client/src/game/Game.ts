@@ -27,7 +27,7 @@ import {
   WORLD_BOT_ID,
 } from '../net/protocol'
 import type { PeerVoiceState } from '../net/VoiceChat'
-import { matchKeybind } from '../state/keybinds'
+import { matchKeybind, mouseCode } from '../state/keybinds'
 import { useAppStore } from '../state/store'
 import { saveMicDeviceId } from '../state/voice'
 import { emoteUrl } from '../ui/hud/emotes'
@@ -103,6 +103,8 @@ export class Game {
   private readonly focus = new THREE.Vector3()
   private followAvatar = true
   private pointer: { x: number; y: number } | null = null
+  /** 右ボタンのホットバーバインドが発火した直後、既定の右クリック移動を1回だけ抑止する */
+  private suppressNextContextMenu = false
   private readonly streamer = new AvatarStreamer()
   private readonly remotes: RemoteAvatars
   private readonly effects: EffectSystem
@@ -219,6 +221,8 @@ export class Game {
     this.renderer.domElement.addEventListener('wheel', this.onWheel, { passive: false })
     this.renderer.domElement.addEventListener('mousemove', this.onMouseMove)
     this.renderer.domElement.addEventListener('mouseleave', this.onMouseLeave)
+    this.renderer.domElement.addEventListener('mousedown', this.onMouseDown)
+    this.renderer.domElement.addEventListener('mouseup', this.onMouseUp)
     window.addEventListener('keydown', this.onKeyDown)
     // リロード・タブ閉じ時に明示的に切断する(接続処理との競合による内部エラー防止)
     window.addEventListener('pagehide', this.onPageHide)
@@ -1264,6 +1268,8 @@ export class Game {
     this.renderer.domElement.removeEventListener('wheel', this.onWheel)
     this.renderer.domElement.removeEventListener('mousemove', this.onMouseMove)
     this.renderer.domElement.removeEventListener('mouseleave', this.onMouseLeave)
+    this.renderer.domElement.removeEventListener('mousedown', this.onMouseDown)
+    this.renderer.domElement.removeEventListener('mouseup', this.onMouseUp)
     window.removeEventListener('keydown', this.onKeyDown)
     window.removeEventListener('pagehide', this.onPageHide)
     this.resizeObserver.disconnect()
@@ -1301,19 +1307,50 @@ export class Game {
     if (state.hudEditMode) return
 
     // ホットバーのカスタムバインドを優先(修飾キー込み完全一致)。表示中のバーのみ
-    for (const hotbar of state.hotbars) {
+    // Space(ジャンプ)やEnter(チャット入力)も固定キーではなく
+    // デフォルトホットバーのキー割当としてここで発火する
+    if (this.fireHotbarBind(event)) event.preventDefault()
+  }
+
+  /** アクティブなホットバーからバインド一致スロットを探して発火する。一致があればtrue */
+  private fireHotbarBind(
+    input: Pick<KeyboardEvent, 'code' | 'shiftKey' | 'ctrlKey' | 'altKey'>,
+  ): boolean {
+    for (const hotbar of useAppStore.getState().hotbars) {
       if (!hotbar.active) continue
-      const index = hotbar.keys.findIndex((bind) => bind && matchKeybind(bind, event))
+      const index = hotbar.keys.findIndex((bind) => bind && matchKeybind(bind, input))
       if (index >= 0) {
-        event.preventDefault()
         const slot = hotbar.slots[index]
         if (slot) void this.dispatch(slot.command)
-        return
+        return true
       }
     }
+    return false
+  }
 
-    // Space(ジャンプ)やEnter(チャット入力)も固定キーではなく
-    // デフォルトホットバーのキー割当として上のループで発火する
+  /** マウスの中/サイド/右ボタンのバインド発火。左は対象選択・インタラクト専用で対象外 */
+  private onMouseDown = (event: MouseEvent): void => {
+    if (event.button === 0) return
+    if (useAppStore.getState().hudEditMode) return
+    const fired = this.fireHotbarBind({
+      code: mouseCode(event.button),
+      shiftKey: event.shiftKey,
+      ctrlKey: event.ctrlKey,
+      altKey: event.altKey,
+    })
+    if (!fired) return
+    event.preventDefault()
+    // 右ボタンにバインドした場合は既定の右クリック移動を上書きする
+    if (event.button === 2) this.suppressNextContextMenu = true
+  }
+
+  /** 戻る/進むボタンにバインドがある場合、ブラウザの履歴移動(mouseup時)を抑止する */
+  private onMouseUp = (event: MouseEvent): void => {
+    if (event.button < 3) return
+    const bound = useAppStore
+      .getState()
+      .hotbars.some((h) => h.active && h.keys.some((b) => b?.code === mouseCode(event.button)))
+    if (bound) event.preventDefault()
   }
 
   /** カメラ追従(on) / カメラ固定(off)を切り替える。追従にした瞬間はスナップする */
@@ -1352,6 +1389,10 @@ export class Game {
 
   private onContextMenu = (event: MouseEvent): void => {
     event.preventDefault()
+    if (this.suppressNextContextMenu) {
+      this.suppressNextContextMenu = false
+      return
+    }
     const hit = this.groundPointAt(event.clientX, event.clientY)
     if (!hit) return
     // 右クリック移動もコマンド経由(すべての操作をコマンドに統一)

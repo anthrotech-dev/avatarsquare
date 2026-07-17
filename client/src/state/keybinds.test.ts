@@ -5,6 +5,7 @@ import {
   findKeybindConflicts,
   formatKeybind,
   matchKeybind,
+  mouseCode,
   type SlotKeybind,
 } from './keybinds'
 
@@ -37,6 +38,20 @@ describe('formatKeybind', () => {
     expect(formatKeybind(bind('Equal'))).toBe('^')
     expect(formatKeybind(null)).toBe('')
   })
+
+  it('マウスボタンの擬似codeを短縮表示する', () => {
+    expect(formatKeybind(bind('Mouse1'))).toBe('中ク')
+    expect(formatKeybind(bind('Mouse2'))).toBe('右ク')
+    expect(formatKeybind(bind('Mouse3'))).toBe('M4')
+    expect(formatKeybind(bind('Mouse4', { shift: true }))).toBe('S+M5')
+  })
+})
+
+describe('mouseCode', () => {
+  it('MouseEvent.buttonから擬似codeを作る', () => {
+    expect(mouseCode(1)).toBe('Mouse1')
+    expect(mouseCode(3)).toBe('Mouse3')
+  })
 })
 
 describe('matchKeybind', () => {
@@ -63,7 +78,17 @@ describe('findKeybindConflicts', () => {
     { seq: 2, keys: [bind('KeyQ'), null] },
   ]
 
-  it('予約キー(Escapeのみ)は修飾なしのみ警告', () => {
+  it('右クリック(Mouse2)は修飾なしのみ予約警告', () => {
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Mouse2')).reserved).toBe(
+      '右クリック移動',
+    )
+    expect(
+      findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Mouse2', { ctrl: true })).reserved,
+    ).toBeNull()
+    expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Mouse3')).reserved).toBeNull()
+  })
+
+  it('予約キー(Escape)は修飾なしのみ警告', () => {
     expect(findKeybindConflicts(hotbars, { seq: 0, index: 0 }, bind('Escape')).reserved).toBe(
       'キャンセル操作',
     )

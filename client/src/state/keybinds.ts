@@ -1,6 +1,8 @@
 /**
  * ホットバー各スロットのキーバインド。任意キー+Shift/Ctrl/Alt修飾に対応する。
- * KeyboardEvent.code ベース(レイアウト非依存)。
+ * KeyboardEvent.code ベース(レイアウト非依存)。マウスボタンは 'Mouse1'(中)
+ * 'Mouse3'(戻る) のような擬似codeで同じ仕組みに載せる。左(Mouse0)は
+ * 対象選択・インタラクト専用のため割当不可。
  */
 
 export interface SlotKeybind {
@@ -13,7 +15,11 @@ export interface SlotKeybind {
 /** ゲーム側で固定用途に使っているキー。修飾なしで割り当てると衝突警告を出す */
 export const RESERVED_KEYS: Array<{ code: string; label: string }> = [
   { code: 'Escape', label: 'キャンセル操作' },
+  { code: 'Mouse2', label: '右クリック移動' },
 ]
+
+/** MouseEvent.button をバインド用の擬似codeへ変換する(例: 3 → 'Mouse3') */
+export const mouseCode = (button: number): string => `Mouse${button}`
 
 const plain = (code: string): SlotKeybind => ({ code, shift: false, ctrl: false, alt: false })
 
@@ -54,6 +60,10 @@ export function formatKeybind(bind: SlotKeybind | null): string {
   else if (key === 'Enter') key = 'Ent'
   else if (key === 'Minus') key = '-'
   else if (key === 'Equal') key = '^'
+  else if (key === 'Mouse1') key = '中ク'
+  else if (key === 'Mouse2') key = '右ク'
+  // 戻る/進むボタン(button 3/4)は通称のM4/M5で表示する
+  else if (key.startsWith('Mouse')) key = `M${Number(key.slice(5)) + 1}`
   const mods = `${bind.ctrl ? 'C+' : ''}${bind.alt ? 'A+' : ''}${bind.shift ? 'S+' : ''}`
   return mods + key
 }
