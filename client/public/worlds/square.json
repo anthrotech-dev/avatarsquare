@@ -274,11 +274,21 @@
     },
     {
       "id": "fountain",
-      "kind": "collider",
-      "shape": "circle",
+      "kind": "group",
       "x": 0,
       "z": 0,
-      "r": 2.4
+      "collider": 2.4,
+      "children": [
+        {
+          "id": "fountain-visual",
+          "kind": "sprite",
+          "image": "square/fountain.png",
+          "z": 2.573,
+          "w": 5.125,
+          "h": 3.863,
+          "shadow": false
+        }
+      ]
     },
     {
       "id": "tree-1",
@@ -685,7 +695,7 @@
         {
           "id": "scarecrow-hp",
           "kind": "bar",
-          "y": 2.0,
+          "y": 2,
           "w": 1.2,
           "h": 0.16,
           "source": "parent",
@@ -730,9 +740,8 @@
         "hp": 30,
         "speed": 1.2,
         "aggroRange": 6,
-        "attackRange": 1.0,
+        "attackRange": 1,
         "attackMs": 2000,
-        "damage": 10,
         "image": "square/slime.png",
         "spawnOffset": [
           2,

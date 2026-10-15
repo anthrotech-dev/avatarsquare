@@ -8,7 +8,11 @@
  *
  * 実行方法: vite devでこのページを開き、Playwright等から window.__generate() を呼ぶ。
  * テクスチャ素材(/textures, /sprites)を実際に読み込んで焼き込むためブラウザで動かす。
+ * 噴水はthree.jsで3Dメッシュを組んでWebGLで撮影するので、ヘッドレス実行時は
+ * WebGLが動くフラグ(--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader)が要る。
  */
+
+import * as THREE from 'three'
 
 const MAP_SIZE = 60
 const TEX_SIZE = 2048
@@ -280,9 +284,6 @@ function paintGround(ctx: CanvasRenderingContext2D, images: GroundImages): void 
   ctx.stroke()
   ctx.restore()
 
-  // 噴水(真上から見た姿を焼き込む。旧実装の3Dメッシュはワールドのプリミティブ化で廃止)
-  paintFountainTopDown(ctx)
-
   // マップ外周を暗くする
   const edge = ctx.createRadialGradient(
     TEX_SIZE / 2,
@@ -298,35 +299,122 @@ function paintGround(ctx: CanvasRenderingContext2D, images: GroundImages): void 
   ctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE)
 }
 
-/** 噴水の真上ビュー。旧buildFountain()の寸法・色(石#9a948a / 水#66b5da)を踏襲 */
-function paintFountainTopDown(ctx: CanvasRenderingContext2D): void {
-  const cx = worldToPx(FOUNTAIN.x)
-  const cy = worldToPx(FOUNTAIN.z)
-  const circle = (r: number, fill: string) => {
-    ctx.beginPath()
-    ctx.arc(cx, cy, unitToPx(r), 0, Math.PI * 2)
-    ctx.fillStyle = fill
-    ctx.fill()
-  }
-  ctx.save()
-  circle(2.55, '#8f897f') // 外周の縁(わずかに暗い石)
-  circle(2.4, '#9a948a') // 石の縁
-  circle(2.1, '#66b5da') // 水盤
-  // 水面のきらめき
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)'
-  ctx.lineWidth = unitToPx(0.08)
-  for (const r of [1.2, 1.6, 1.95]) {
-    ctx.beginPath()
-    ctx.arc(cx, cy, unitToPx(r), Math.PI * 0.15, Math.PI * 0.85)
-    ctx.stroke()
-    ctx.beginPath()
-    ctx.arc(cx, cy, unitToPx(r), Math.PI * 1.1, Math.PI * 1.7)
-    ctx.stroke()
-  }
-  circle(0.85, '#9a948a') // 中央の受け皿
-  circle(0.72, '#7fc5de') // 受け皿の水
-  circle(0.2, '#b9d9e8') // 噴き上げの白
-  ctx.restore()
+// ---------------------------------------------------------------------------
+// 噴水スプライト(3Dメッシュをゲームと同じ視点で撮影し、2Dスプライトとして配置する)
+// ---------------------------------------------------------------------------
+
+/**
+ * Game.tsのCAMERA_DIRと同値。スプライトはこの向きで撮った絵なので、
+ * ゲーム側の視点を変えたらここも合わせて再生成する
+ */
+const CAMERA_DIR = new THREE.Vector3(0, 0.9, 1).normalize()
+/** スプライトの解像度(px/ワールド単位) */
+const SPRITE_PX_PER_UNIT = 160
+/** SceneRenderer.buildSprite()のsprite.center.y と同値(画像下端からの接地点の位置) */
+const SPRITE_ANCHOR_Y = 0.02
+
+interface RenderedSprite {
+  png: string // dataURL
+  /** スプライトの寸法(ワールド単位) */
+  w: number
+  h: number
+  /** 接地点(画像下端中央)のモデル原点からのzオフセット。手前に張り出す分だけ正になる */
+  anchorZ: number
+}
+
+/** 旧GroundMap.buildFountain()と同じ構成(石#9a948a / 水#66b5da の円柱と円) */
+function buildFountainMesh(): THREE.Group {
+  const group = new THREE.Group()
+  const stone = new THREE.MeshStandardMaterial({ color: 0x9a948a, roughness: 0.9 })
+  const water = new THREE.MeshBasicMaterial({ color: 0x66b5da })
+
+  const basin = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.55, 0.6, 28), stone)
+  basin.position.y = 0.3
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(2.1, 28), water)
+  pool.rotation.x = -Math.PI / 2
+  pool.position.y = 0.62
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.5, 1.1, 16), stone)
+  pillar.position.y = 1.1
+  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.6, 0.28, 20), stone)
+  bowl.position.y = 1.72
+  const bowlWater = new THREE.Mesh(new THREE.CircleGeometry(0.72, 20), water)
+  bowlWater.rotation.x = -Math.PI / 2
+  bowlWater.position.y = 1.87
+
+  group.add(basin, pool, pillar, bowl, bowlWater)
+  return group
+}
+
+/**
+ * モデルをゲームと同じ平行投影・同じライトで透過PNGに撮影する。
+ * 画像の下端中央をワールドのどこに接地させるか(anchorZ)も一緒に返す。
+ * ゲームのスプライトは接地点から画面上方へ伸びるビルボードなので、
+ * 画像の最下点を接地点にしないと地面より下の部分が埋もれて消える
+ */
+function renderSprite(model: THREE.Object3D): RenderedSprite {
+  const scene = new THREE.Scene()
+  // Game.setupLights()と同じライト
+  scene.add(new THREE.HemisphereLight(0xdfeaff, 0x8a9a78, 1.2))
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6)
+  sun.position.set(20, 40, 25)
+  scene.add(sun)
+  scene.add(model)
+  model.updateMatrixWorld(true)
+
+  // 画面座標系: 横=ワールドx、縦=視線に直交する上向き(lookAtのupがyなのでyz平面内)
+  const screenUp = new THREE.Vector3(0, CAMERA_DIR.z, -CAMERA_DIR.y)
+  let maxAbsX = 0
+  let minV = Number.POSITIVE_INFINITY
+  let maxV = Number.NEGATIVE_INFINITY
+  const v = new THREE.Vector3()
+  model.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return
+    const pos = obj.geometry.getAttribute('position')
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(obj.matrixWorld)
+      maxAbsX = Math.max(maxAbsX, Math.abs(v.x))
+      const sv = v.dot(screenUp)
+      minV = Math.min(minV, sv)
+      maxV = Math.max(maxV, sv)
+    }
+  })
+
+  // 外接矩形にアンチエイリアス分の余白を足し、接地点の余白(center.y)を下に確保する
+  const pad = 2 / SPRITE_PX_PER_UNIT
+  const halfW = maxAbsX + pad
+  const top = maxV + pad
+  const visibleH = top - (minV - pad)
+  const h = visibleH / (1 - SPRITE_ANCHOR_Y)
+  const bottom = top - h
+  const pxW = Math.ceil(halfW * 2 * SPRITE_PX_PER_UNIT)
+  const pxH = Math.ceil(h * SPRITE_PX_PER_UNIT)
+  // 画素数に丸めた分だけ寸法を補正(画像が伸縮しないように)
+  const w = pxW / SPRITE_PX_PER_UNIT
+  const hExact = pxH / SPRITE_PX_PER_UNIT
+  const bottomExact = top - hExact
+
+  const camera = new THREE.OrthographicCamera(-w / 2, w / 2, top, bottomExact, 0.1, 100)
+  camera.position.copy(CAMERA_DIR).multiplyScalar(50)
+  camera.lookAt(0, 0, 0)
+
+  const canvas = document.createElement('canvas')
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: true,
+  })
+  renderer.setPixelRatio(1)
+  renderer.setSize(pxW, pxH, false)
+  renderer.setClearColor(0x000000, 0)
+  renderer.render(scene, camera)
+  const png = canvas.toDataURL('image/png')
+  renderer.dispose()
+  document.body.appendChild(canvas) // 目視確認用
+
+  // 接地点: 画像のcenter.y位置が地面(y=0)のどのzに当たるか。地面上の点(0,0,z)の縦座標は -z*CAMERA_DIR.y
+  const anchorV = bottomExact + hExact * SPRITE_ANCHOR_Y
+  return { png, w: round(w), h: round(hExact), anchorZ: round(-anchorV / CAMERA_DIR.y) }
 }
 
 // ---------------------------------------------------------------------------
@@ -471,11 +559,30 @@ function seaPolygon(): [number, number][] {
   return points
 }
 
-function buildWorldJson(): string {
+function buildWorldJson(fountain: RenderedSprite): string {
   const scene: Record<string, unknown>[] = [
     { id: 'ground', kind: 'ground', texture: 'square/ground.webp' },
     { id: 'sea', kind: 'collider', shape: 'polygon', points: seaPolygon() },
-    { id: 'fountain', kind: 'collider', shape: 'circle', x: FOUNTAIN.x, z: FOUNTAIN.z, r: FOUNTAIN.r },
+    // 噴水: 3Dメッシュを撮影したスプライト。親groupが通行不可円を持ち、子が絵。
+    // 絵は手前に張り出す分(anchorZ)だけ前に置いて下端を接地させる(足元影は土台を焼き込み済みなので無し)
+    {
+      id: 'fountain',
+      kind: 'group',
+      x: FOUNTAIN.x,
+      z: FOUNTAIN.z,
+      collider: FOUNTAIN.r,
+      children: [
+        {
+          id: 'fountain-visual',
+          kind: 'sprite',
+          image: 'square/fountain.png',
+          z: fountain.anchorZ,
+          w: fountain.w,
+          h: fountain.h,
+          shadow: false,
+        },
+      ],
+    },
   ]
   TREES.forEach((t, i) => {
     const def = TREE_DEFS[t.kind]
@@ -624,6 +731,7 @@ function buildWorldJson(): string {
 interface GenerateResult {
   json: string
   groundPng: string // dataURL
+  fountainPng: string // dataURL
   scarecrowPng: string // dataURL
   slimePng: string // dataURL
 }
@@ -640,8 +748,10 @@ async function generate(): Promise<GenerateResult> {
   if (!ctx) throw new Error('2d context unavailable')
   paintGround(ctx, { grass, paving, sand })
   document.body.appendChild(canvas) // 目視確認用
+  const fountain = renderSprite(buildFountainMesh())
   return {
-    json: buildWorldJson(),
+    json: buildWorldJson(fountain),
+    fountainPng: fountain.png,
     // 地面は非透過かつ巨大(2048px)なのでWebPで書き出す(PNGだと~9MBになる)
     groundPng: canvas.toDataURL('image/webp', 0.9),
     scarecrowPng: paintScarecrow().toDataURL('image/png'),

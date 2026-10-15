@@ -433,7 +433,8 @@ export class SceneRenderer {
     sprite.scale.set(w, h, 1)
     const group = new THREE.Group()
     group.add(sprite)
-    group.add(makeBlobShadow(w * 0.32))
+    // shadow:false で足元影を省ける(土台を地面に焼き込んだ噴水など、影が不自然になるもの向け)
+    if (node.shadow !== false) group.add(makeBlobShadow(w * 0.32))
     return {
       def: node,
       object: group,
