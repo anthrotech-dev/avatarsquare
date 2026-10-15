@@ -12,6 +12,7 @@ const ACTIONS: HotbarSlot[] = [
   { command: '/attack', label: '斬撃' },
   { command: '/shoot', label: '射撃' },
   { command: '/dash', label: 'ダッシュ' },
+  { command: '/heal', label: '回復' },
   { command: '/stop', label: '停止' },
   { command: '/where', label: '座標表示' },
   { command: '/camera toggle', label: 'カメラ切替' },

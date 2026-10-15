@@ -76,9 +76,13 @@ function sameBuffs(a: BuffInfo[], b: BuffInfo[]): boolean {
  * 選択中ターゲットのHUD表示用スナップショット。Gameが選択変更・gpatch受信時に
  * 反映する(値の正はサーバー同期済みのシーンノード属性)
  */
+/** ターゲットの種別。node=シーンノード(敵・設置物)、player=他プレイヤー、self=自分 */
+export type TargetKind = 'node' | 'player' | 'self'
+
 export interface TargetInfo {
+  kind: TargetKind
   id: string
-  /** 表示名(nodeのname属性、無ければid) */
+  /** 表示名(nodeのname属性、無ければid。プレイヤーはprofileの名前、無ければidentity) */
   name: string
   /** 公開HP。ノードにhp/hpMaxが両方あるときだけ非null(ゲージ表示の汎用規約) */
   hp: number | null

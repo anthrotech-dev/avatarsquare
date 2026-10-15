@@ -5,14 +5,32 @@
  * 将来のプラグインが同じAPIで操作を追加できる。
  */
 
+/** 対象指定スキルが受け取る対象。kind=node(シーンノード)/player(他プレイヤー)/self(自分) */
+export interface SkillTarget {
+  kind: 'node' | 'player' | 'self'
+  id: string
+  name: string
+  /** ワールド座標。radiusは射程判定用の的の半径 */
+  x: number
+  z: number
+  radius: number
+  /** 戦闘不能中(プレイヤー・倒れたノード)。回復などの対象可否判定に使う */
+  alive: boolean
+}
+
 export interface GameCommandAPI {
   /** A*経路探索して移動する。到達不能ならfalse */
   moveTo(x: number, z: number): boolean
   stop(): void
   /** ジャンプする。空中ならfalse */
   jump(): boolean
-  /** targetは向き合わせ・方向スキルの狙い先。tidは対象指定スキルの対象ノードid */
+  /** targetは向き合わせ・方向スキルの狙い先。tidは対象指定スキルの対象id(ノードid/プレイヤーidentity) */
   performAction(name: string, target?: { x: number; z: number }, tid?: string): void
+  /**
+   * 回復。対象が自分なら即時適用、他プレイヤーならactで通知して本人が適用する
+   * (HPはクライアント権威)。戦闘不能中・対象が戦闘不能ならthrow(CD返金)
+   */
+  heal(target: SkillTarget, amount: number): void
   /** スポーン地点で復活する。戦闘不能でなければthrow(コマンド側で表示) */
   respawn(): void
   /** 10秒間移動速度を上げるバフを自分に付与する。戦闘不能中はthrow(CD返金) */
@@ -69,15 +87,20 @@ export interface GameCommandAPI {
    * 射程外の対象へ自動接近し、射程(dist - radius <= range)に入ったら
    * commandを再実行する。戦闘不能・経路なしはfalse
    */
-  approachTarget(targetId: string, range: number, radius: number, command: string): boolean
-  /** 対象を選択する(null=解除)。targetableでないノードはthrow(コマンド側で表示) */
+  approachTarget(target: SkillTarget, range: number, command: string): boolean
+  /**
+   * 対象を選択する(null=解除)。idはtargetableなシーンノードid、プレイヤーのidentity
+   * または表示名、'self'(自分)。該当なしはthrow(コマンド側で表示)
+   */
   selectTarget(id: string | null): void
   /**
    * 対象指定スキル用の対象取得。選択済みかつ有効(存在+targetable+可視)なら
-   * それを、未選択ならカーソル直下のtargetableエンティティを自動選択して返す。
-   * どちらも無ければnull。座標はワールド座標、radiusは射程判定用の的の半径
+   * それを、未選択ならカーソル直下の対象(targetableノードまたはプレイヤー)を
+   * 自動選択して返す。どちらも無ければnull
    */
-  acquireTarget(): { id: string; name: string; x: number; z: number; radius: number } | null
+  acquireTarget(): SkillTarget | null
+  /** 自分をスキル対象として返す(/healの既定対象) */
+  acquireSelf(): SkillTarget
   /** チャット入力欄にフォーカスする */
   focusChat(): void
   /** VRMファイル選択ダイアログを開く */

@@ -48,8 +48,14 @@ class RemoteAvatar {
   private voiceState: PeerVoiceState = 'off'
   private voiceMode: VoiceMode = 'normal'
   private speaking = false
+  /** 表示名(profile受信前は空)。ターゲットHUDの名前解決に使う */
+  name = ''
+  /** 戦闘不能中(posのdeadフラグ)。ターゲットHUDのグレー表示と回復対象の判定に使う */
+  dead = false
 
-  constructor() {
+  constructor(id: string) {
+    // レイキャストのヒットから参加者idへ解決するためgroupに刻む(子はこれを祖先に持つ)
+    this.group.userData.peerId = id
     this.plane = new THREE.Mesh(new THREE.PlaneGeometry(CAPTURE_WORLD_W, CAPTURE_WORLD_H))
     this.plane.position.y = CAPTURE_CENTER_Y
     this.plane.visible = false // 映像が届くまで非表示
@@ -67,6 +73,7 @@ class RemoteAvatar {
 
   /** 頭上のネームプレート。空文字で非表示 */
   setName(name: string): void {
+    this.name = name
     if (!this.nameplate) {
       if (!name) return
       this.nameplate = new Nameplate(name)
@@ -171,6 +178,7 @@ export class RemoteAvatars {
     const avatar = this.getOrCreate(id)
     avatar.target.set(message.x, 0, message.z)
     avatar.planeTargetY = CAPTURE_CENTER_Y + (message.y ?? 0)
+    avatar.dead = message.dead === true
   }
 
   setVideo(id: string, video: HTMLVideoElement): void {
@@ -200,6 +208,34 @@ export class RemoteAvatars {
     this.avatars.get(id)?.setSpeaking(speaking)
   }
 
+  /** 補間済みの表示位置(選択リングの追従用)。いない相手はnull */
+  position(id: string): THREE.Vector3 | null {
+    return this.avatars.get(id)?.group.position ?? null
+  }
+
+  /** 表示名(profile未受信なら空文字)。いない相手はnull */
+  nameOf(id: string): string | null {
+    const avatar = this.avatars.get(id)
+    return avatar ? avatar.name : null
+  }
+
+  has(id: string): boolean {
+    return this.avatars.has(id)
+  }
+
+  /** 戦闘不能中か。いない相手はfalse */
+  isDead(id: string): boolean {
+    return this.avatars.get(id)?.dead === true
+  }
+
+  /**
+   * クリック選択のレイキャスト対象(各参加者のgroup。子はintersectObjectsのrecursiveで拾う)。
+   * ヒットしたオブジェクトからはuserData.peerIdを持つ祖先を辿って参加者idへ解決する
+   */
+  raycastTargets(): THREE.Object3D[] {
+    return [...this.avatars.values()].map((avatar) => avatar.group)
+  }
+
   /** 空間音響の音源位置に使う、補間済みの表示位置(id, position)の列挙 */
   *positions(): IterableIterator<[string, THREE.Vector3]> {
     for (const [id, avatar] of this.avatars) yield [id, avatar.group.position]
@@ -224,7 +260,7 @@ export class RemoteAvatars {
   private getOrCreate(id: string): RemoteAvatar {
     let avatar = this.avatars.get(id)
     if (!avatar) {
-      avatar = new RemoteAvatar()
+      avatar = new RemoteAvatar(id)
       this.scene.add(avatar.group)
       this.avatars.set(id, avatar)
     }

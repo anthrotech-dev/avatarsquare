@@ -13,6 +13,8 @@ const SLASH_ARC = (100 * Math.PI) / 180
 const SHOT_SPEED = 14 // m/s
 const SHOT_HEIGHT = 1.0
 const IMPACT_LIFETIME = 0.3
+const HEAL_LIFETIME = 0.7
+const HEAL_RISE = 1.6 // m。リングが立ち上がる高さ
 
 /** yaw方向を中心にした扇形が展開してフェードする斬撃 */
 class SlashEffect implements EffectInstance {
@@ -152,8 +154,58 @@ class HitFlashEffect implements EffectInstance {
   }
 }
 
+/**
+ * 回復。対象(tx,tz)の足元で緑のリングが収束しながら立ち上がり、
+ * 地面には淡い円が広がってフェードする
+ */
+class HealEffect implements EffectInstance {
+  private readonly ring: THREE.Mesh
+  private readonly ground: THREE.Mesh
+  private readonly x: number
+  private readonly z: number
+  private age = 0
+
+  constructor(
+    spawn: EffectSpawn,
+    private readonly scene: THREE.Scene,
+  ) {
+    this.x = spawn.tx ?? spawn.x
+    this.z = spawn.tz ?? spawn.z
+    this.ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 32), acquireFlatMaterial(0x7cfc8a))
+    this.ring.rotation.x = -Math.PI / 2
+    this.ring.position.set(this.x, 0.08, this.z)
+    scene.add(this.ring)
+    this.ground = new THREE.Mesh(new THREE.CircleGeometry(0.7, 32), acquireFlatMaterial(0x7cfc8a))
+    this.ground.rotation.x = -Math.PI / 2
+    this.ground.position.set(this.x, 0.06, this.z)
+    scene.add(this.ground)
+  }
+
+  update(delta: number): boolean {
+    this.age += delta
+    const t = this.age / HEAL_LIFETIME
+    if (t >= 1) return false
+    this.ring.position.y = 0.08 + HEAL_RISE * t
+    this.ring.scale.setScalar(1 - t * 0.6)
+    ;(this.ring.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - t)
+    this.ground.scale.setScalar(0.6 + t * 1.2)
+    ;(this.ground.material as THREE.MeshBasicMaterial).opacity = 0.35 * (1 - t)
+    return true
+  }
+
+  dispose(): void {
+    this.scene.remove(this.ring)
+    this.ring.geometry.dispose()
+    releaseFlatMaterial(this.ring.material as THREE.MeshBasicMaterial)
+    this.scene.remove(this.ground)
+    this.ground.geometry.dispose()
+    releaseFlatMaterial(this.ground.material as THREE.MeshBasicMaterial)
+  }
+}
+
 export function registerBuiltinEffects(system: EffectSystem): void {
   system.register('slash', (spawn, scene) => new SlashEffect(spawn, scene))
   system.register('shot', (spawn, scene) => new ShotEffect(spawn, scene))
   system.register('hitflash', (spawn, scene) => new HitFlashEffect(spawn, scene))
+  system.register('heal', (spawn, scene) => new HealEffect(spawn, scene))
 }

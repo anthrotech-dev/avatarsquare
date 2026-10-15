@@ -72,7 +72,15 @@ describe('マクロの実行', () => {
       },
       performAction: (name) => order.push(name),
       // /attackは対象指定スキルになったため、射程内の対象を返す
-      acquireTarget: () => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 1, radius: 0.5 }),
+      acquireTarget: () => ({
+        kind: 'node' as const,
+        id: 'scarecrow',
+        name: 'かかし',
+        x: 0,
+        z: 1,
+        radius: 0.5,
+        alive: true,
+      }),
     })
     await registry.execute('/macro combo', ctx)
     expect(order).toEqual(['jump', 'slash'])
@@ -90,7 +98,15 @@ describe('マクロの実行', () => {
     const { store, registry } = makeSetup()
     store.save({ name: 'slow', lines: ['/jump', '/wait 2', '/attack'] })
     const { ctx, api } = makeTestContext({
-      acquireTarget: () => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 1, radius: 0.5 }),
+      acquireTarget: () => ({
+        kind: 'node' as const,
+        id: 'scarecrow',
+        name: 'かかし',
+        x: 0,
+        z: 1,
+        radius: 0.5,
+        alive: true,
+      }),
     })
     const done = registry.execute('/slow', ctx)
     await vi.advanceTimersByTimeAsync(1000)

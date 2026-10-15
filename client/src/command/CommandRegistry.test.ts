@@ -13,7 +13,15 @@ function makeRegistry(): CommandRegistry {
 
 /** /attack(対象指定スキル)が発動するための射程内ターゲット */
 function inRangeTarget() {
-  return { id: 'scarecrow', name: 'かかし', x: 0, z: 1, radius: 0.5 }
+  return {
+    kind: 'node' as const,
+    id: 'scarecrow',
+    name: 'かかし',
+    x: 0,
+    z: 1,
+    radius: 0.5,
+    alive: true,
+  }
 }
 
 describe('CommandRegistry', () => {

@@ -67,7 +67,15 @@ describe('/attack(対象指定スキル)と/target', () => {
     expect(errors[0]).toContain('対象を選択')
     // CD返金の確認: 対象が取れれば直後の再実行が通る
     const { ctx: ctx2, api: api2 } = makeTestContext({
-      acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 1, radius: 0.5 })),
+      acquireTarget: vi.fn(() => ({
+        kind: 'node' as const,
+        id: 'scarecrow',
+        name: 'かかし',
+        x: 0,
+        z: 1,
+        radius: 0.5,
+        alive: true,
+      })),
     })
     await registry.execute('/attack', ctx2)
     expect(api2.performAction).toHaveBeenCalledTimes(1)
@@ -76,15 +84,35 @@ describe('/attack(対象指定スキル)と/target', () => {
   it('射程外(距離-半径 > 2.2m)なら発動せず自動接近を開始する(CDは返金)', async () => {
     const registry = makeRegistry()
     const { ctx, api, errors } = makeTestContext({
-      acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 3, radius: 0.5 })),
+      acquireTarget: vi.fn(() => ({
+        kind: 'node' as const,
+        id: 'scarecrow',
+        name: 'かかし',
+        x: 0,
+        z: 3,
+        radius: 0.5,
+        alive: true,
+      })),
     })
     await registry.execute('/attack', ctx)
     expect(api.performAction).not.toHaveBeenCalled()
-    expect(api.approachTarget).toHaveBeenCalledWith('scarecrow', 2.2, 0.5, '/attack')
+    expect(api.approachTarget).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'scarecrow', radius: 0.5 }),
+      2.2,
+      '/attack',
+    )
     expect(errors).toHaveLength(0)
     // CD返金の確認: 射程内に入れば直後の再実行が通る
     const { ctx: ctx2, api: api2 } = makeTestContext({
-      acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 1, radius: 0.5 })),
+      acquireTarget: vi.fn(() => ({
+        kind: 'node' as const,
+        id: 'scarecrow',
+        name: 'かかし',
+        x: 0,
+        z: 1,
+        radius: 0.5,
+        alive: true,
+      })),
     })
     await registry.execute('/attack', ctx2)
     expect(api2.performAction).toHaveBeenCalledTimes(1)
@@ -92,7 +120,15 @@ describe('/attack(対象指定スキル)と/target', () => {
 
   it('射程外かつ到達不能(接近開始失敗)ならエラーを表示する', async () => {
     const { ctx, api, errors } = makeTestContext({
-      acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 3, radius: 0.5 })),
+      acquireTarget: vi.fn(() => ({
+        kind: 'node' as const,
+        id: 'scarecrow',
+        name: 'かかし',
+        x: 0,
+        z: 3,
+        radius: 0.5,
+        alive: true,
+      })),
       approachTarget: vi.fn(() => false),
     })
     await makeRegistry().execute('/attack', ctx)
@@ -102,10 +138,36 @@ describe('/attack(対象指定スキル)と/target', () => {
 
   it('半径ぶんで射程に届けば発動し、対象座標とtidを渡す', async () => {
     const { ctx, api } = makeTestContext({
-      acquireTarget: vi.fn(() => ({ id: 'scarecrow', name: 'かかし', x: 0, z: 2.5, radius: 0.5 })),
+      acquireTarget: vi.fn(() => ({
+        kind: 'node' as const,
+        id: 'scarecrow',
+        name: 'かかし',
+        x: 0,
+        z: 2.5,
+        radius: 0.5,
+        alive: true,
+      })),
     })
     await makeRegistry().execute('/attack', ctx)
     expect(api.performAction).toHaveBeenCalledWith('slash', { x: 0, z: 2.5 }, 'scarecrow')
+  })
+
+  it('味方・自分を対象にした/attackは発動せず「この対象には使えません」になる', async () => {
+    const { ctx, api, errors } = makeTestContext({
+      acquireTarget: vi.fn(() => ({
+        kind: 'player' as const,
+        id: 'user-abc',
+        name: 'みかた',
+        x: 0,
+        z: 1,
+        radius: 0.5,
+        alive: true,
+      })),
+    })
+    await makeRegistry().execute('/attack', ctx)
+    expect(api.performAction).not.toHaveBeenCalled()
+    expect(api.approachTarget).not.toHaveBeenCalled()
+    expect(errors[0]).toContain('この対象には使えません')
   })
 
   it('/target <id> は選択、/target clear は解除する', async () => {
@@ -300,5 +362,69 @@ describe('発音モードコマンド', () => {
     })
     await makeRegistry().execute('/world nope', ctx)
     expect(errors[0]).toContain('404')
+  })
+})
+
+describe('/heal(味方・自分の回復)', () => {
+  const ally = {
+    kind: 'player' as const,
+    id: 'user-abc',
+    name: 'みかた',
+    x: 0,
+    z: 1,
+    radius: 0.5,
+    alive: true,
+  }
+
+  it('未選択なら自分を回復する', async () => {
+    const { ctx, api, printed } = makeTestContext({ acquireTarget: vi.fn(() => null) })
+    await makeRegistry().execute('/heal', ctx)
+    expect(api.heal).toHaveBeenCalledWith(expect.objectContaining({ kind: 'self' }), 30)
+    expect(api.performAction).toHaveBeenCalledWith('heal', { x: 0, z: 0 }, 'self-id')
+    expect(printed[0]).toContain('回復')
+  })
+
+  it('射程内の味方なら回復し、対象のidentityをtidに渡す', async () => {
+    const { ctx, api } = makeTestContext({ acquireTarget: vi.fn(() => ally) })
+    await makeRegistry().execute('/heal', ctx)
+    expect(api.heal).toHaveBeenCalledWith(ally, 30)
+    expect(api.performAction).toHaveBeenCalledWith('heal', { x: 0, z: 1 }, 'user-abc')
+  })
+
+  it('射程外(距離-半径 > 6m)なら発動せず自動接近する(CDは返金)', async () => {
+    const far = { ...ally, z: 8 }
+    const { ctx, api, errors } = makeTestContext({ acquireTarget: vi.fn(() => far) })
+    await makeRegistry().execute('/heal', ctx)
+    expect(api.heal).not.toHaveBeenCalled()
+    expect(api.approachTarget).toHaveBeenCalledWith(far, 6, '/heal')
+    expect(errors).toHaveLength(0)
+  })
+
+  it('敵(ノード)を対象にすると「この対象には使えません」、戦闘不能の味方は回復できない', async () => {
+    const { ctx, api, errors } = makeTestContext({
+      acquireTarget: vi.fn(() => ({
+        kind: 'node' as const,
+        id: 'scarecrow',
+        name: 'かかし',
+        x: 0,
+        z: 1,
+        radius: 0.5,
+        alive: true,
+      })),
+    })
+    await makeRegistry().execute('/heal', ctx)
+    expect(api.heal).not.toHaveBeenCalled()
+    expect(errors[0]).toContain('この対象には使えません')
+
+    const {
+      ctx: ctx2,
+      api: api2,
+      errors: errors2,
+    } = makeTestContext({
+      acquireTarget: vi.fn(() => ({ ...ally, alive: false })),
+    })
+    await makeRegistry().execute('/heal', ctx2)
+    expect(api2.heal).not.toHaveBeenCalled()
+    expect(errors2[0]).toContain('戦闘不能')
   })
 })

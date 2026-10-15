@@ -7,7 +7,7 @@ import { clearCachedVRM, loadCachedVRM, saveCachedVRM } from '../avatar/vrmCache
 import { registerBuiltins } from '../command/builtins'
 import { CommandRegistry } from '../command/CommandRegistry'
 import { MacroStore, wireMacros } from '../command/macros'
-import type { GameCommandAPI } from '../command/types'
+import type { GameCommandAPI, SkillTarget } from '../command/types'
 import { NetClient } from '../net/NetClient'
 import {
   clampWhisperRadius,
@@ -19,6 +19,7 @@ import {
   type ScenePatchMessage,
   type SceneSnapshotMessage,
   type SceneSpawnMessage,
+  type StatMessage,
   sanitizeChatText,
   sanitizeName,
   type VoiceMode,
@@ -28,7 +29,7 @@ import {
 } from '../net/protocol'
 import type { PeerVoiceState } from '../net/VoiceChat'
 import { matchKeybind, mouseCode } from '../state/keybinds'
-import { useAppStore } from '../state/store'
+import { type TargetKind, useAppStore } from '../state/store'
 import { saveMicDeviceId } from '../state/voice'
 import { emoteUrl } from '../ui/hud/emotes'
 import { SceneRenderer } from '../world/SceneRenderer'
@@ -73,6 +74,29 @@ const PLAYER_MAX_HP = 100
 /** ダッシュ(/dash)の効果時間と移動速度倍率。自分バフはクライアント権威 */
 const DASH_DURATION_MS = 10_000
 const DASH_SPEED_MULTIPLIER = 1.5
+/**
+ * 他プレイヤーからの回復(act heal, tid=自分)で回復する量。HPはクライアント権威なので
+ * 送信側の数値は信用せず受信側の定数で適用する(builtins.tsのHEAL_AMOUNTと対応)
+ */
+const HEAL_RECEIVE_AMOUNT = 30
+/** プレイヤーを対象にしたときの的の半径(m)。射程判定と選択リングに使う */
+const PLAYER_TARGET_RADIUS = 0.5
+
+/** 選択中ターゲットの参照。node=シーンノードid、player=参加者identity、self=自分(idは自分のidentity) */
+interface TargetRef {
+  kind: TargetKind
+  id: string
+}
+
+/** レイキャストの結果。nodeのidはヒットしたノード自身(targetable等の祖先解決は呼び出し側) */
+type PickResult = TargetRef
+
+/** 他プレイヤーが配ってきたステータス(stat)。本人がクライアント権威 */
+interface PeerStat {
+  hp: number
+  hpMax: number
+  buffs: BuffInfo[]
+}
 
 interface ClickMarker {
   mesh: THREE.Mesh
@@ -91,8 +115,10 @@ export class Game {
   private sceneRenderer: SceneRenderer | null = null
   private navGrid: NavGrid | null = null
   private world: WorldDef | null = null
-  /** 選択中ターゲットのノードid(正はここ。HUDへはstoreへスナップショットを流す) */
-  private selectedTargetId: string | null = null
+  /** 選択中ターゲット(正はここ。HUDへはstoreへスナップショットを流す) */
+  private selectedTarget: TargetRef | null = null
+  /** 他プレイヤーのステータス(statメッセージ)。keyは参加者identity */
+  private readonly peerStats = new Map<string, PeerStat>()
   private readonly targetRing = new TargetRing(this.scene)
   /** ?room=での入室先の明示指定。/worldでの切替後は新ワールドを優先するため破棄する */
   private roomOverride = new URLSearchParams(location.search).get('room')
@@ -139,8 +165,8 @@ export class Game {
   private readonly targetBuffsCache = new Map<string, BuffInfo[]>()
   /** 射程外の対象への自動接近。射程に入るとcommandを再実行する(毎フレームupdateApproachで判定) */
   private pendingApproach: {
-    kind: 'slash' | 'interact'
-    targetId: string
+    kind: 'skill' | 'interact'
+    target: TargetRef
     /** 発動判定: dist - radius <= range(interactはradius=0で中心間距離) */
     range: number
     radius: number
@@ -305,8 +331,8 @@ export class Game {
    * 旧ワールドのGPUリソースはここで解放する。
    */
   private applyWorld(world: WorldDef, worldUrl: string): void {
-    // 選択ターゲットは旧ワールドのノードを指しているため解除する
-    this.selectedTargetId = null
+    // 選択ターゲットは旧ワールドのノード・参加者を指しているため解除する
+    this.selectedTarget = null
     this.targetRing.clear()
     useAppStore.getState().setTarget(null)
     // バフは旧ワールドのものなので全て剥がす。初期シーンの静的buffs属性を拾い直す
@@ -356,6 +382,9 @@ export class Game {
   /** リモート由来のセッション状態を全て消す(再接続・ワールド切替の共通処理) */
   private clearSessionState(): void {
     this.remotes.clear()
+    this.peerStats.clear()
+    // 他プレイヤーの選択は再接続で無効になる(自分・ノードの選択は維持)
+    if (this.selectedTarget?.kind === 'player') this.pushTargetToStore()
     this.speakingIds.clear()
     this.peerVoiceModes.clear()
     this.peerVoiceStates.clear()
@@ -412,7 +441,7 @@ export class Game {
           )
         }
         renderer.applyPatch(message.id, message.attrs)
-        if (message.id === this.selectedTargetId) this.pushTargetToStore()
+        if (this.isSelectedNode(message.id)) this.pushTargetToStore()
         break
       case 'gsnap': {
         const receivedAt = performance.now()
@@ -425,7 +454,7 @@ export class Game {
         for (const id of message.despawns ?? []) this.targetBuffsCache.delete(id)
         renderer.applySnapshot(message.patches, message.spawns, message.despawns)
         if (message.spawns?.length || message.despawns?.length) this.markNavGridDirty()
-        if (this.selectedTargetId) this.pushTargetToStore()
+        if (this.selectedTarget?.kind === 'node') this.pushTargetToStore()
         break
       }
       case 'gspawn':
@@ -438,7 +467,7 @@ export class Game {
         renderer.applyDespawn(message.id)
         this.markNavGridDirty()
         // 選択中のエンティティ(またはその祖先)が消えたら選択も自動解除される
-        if (this.selectedTargetId) this.pushTargetToStore()
+        if (this.selectedTarget?.kind === 'node') this.pushTargetToStore()
         break
       case 'gevent': {
         // 対象が自分のhitは実ダメージ(geventは__world発の検証済み経路でしか届かない)
@@ -465,14 +494,85 @@ export class Game {
   }
 
   /**
+   * 他プレイヤーのstatを受け取る。値は相手のクライアント改造に備えて検証し、
+   * buffsはノード属性buffsと同じ正規化(remainingMs→expiresAt)を通す
+   */
+  private applyPeerStat(id: string, message: StatMessage): void {
+    const hp = Number(message.hp)
+    const hpMax = Number(message.hpMax)
+    if (!Number.isFinite(hp) || !Number.isFinite(hpMax) || hpMax <= 0) return
+    this.peerStats.set(id, {
+      hp: Math.max(0, Math.min(hpMax, hp)),
+      hpMax,
+      buffs: normalizeBuffs(message.buffs, performance.now()),
+    })
+    if (this.isSelectedPlayer(id)) this.pushTargetToStore()
+  }
+
+  /**
    * 自分への被弾。戦闘不能中の追撃(サーバーの除外が効くまでのラグや
    * 複数体の同時攻撃)は無視する
    */
   private applyDamage(damage: number): void {
     if (this.dead) return
     this.selfHp = Math.max(0, this.selfHp - damage)
-    useAppStore.getState().setSelfHp(this.selfHp, PLAYER_MAX_HP)
+    this.syncSelfStatus()
     if (this.selfHp === 0) this.die()
+  }
+
+  /**
+   * 自分のHPを回復する(自分のHPはクライアント権威)。
+   * /healの自己対象と、他プレイヤーからのact(heal, tid=自分)の両方がここに来る
+   */
+  private applyHeal(amount: number): void {
+    if (this.dead || !Number.isFinite(amount) || amount <= 0) return
+    this.selfHp = Math.min(PLAYER_MAX_HP, this.selfHp + amount)
+    this.syncSelfStatus()
+  }
+
+  /**
+   * 回復スキルの発動(送信側)。自分なら即時適用、他プレイヤーなら対象本人へ
+   * actで通知し本人が適用する(エフェクトはperformAction側で全員に出る)
+   */
+  heal(target: SkillTarget, amount: number): void {
+    if (this.dead) throw new Error('戦闘不能中は使えません')
+    if (target.kind === 'node') throw new Error('この対象には使えません')
+    if (!target.alive) throw new Error(`「${target.name}」は戦闘不能です`)
+    if (target.kind === 'self') this.applyHeal(amount)
+    // playerはperformActionのact(tid=identity)を受けた本人が適用する
+  }
+
+  /**
+   * 自分のHP・バフの変化を各所へ反映する: HUD(store)、自分を選択中ならターゲットHUD、
+   * 他プレイヤー(statメッセージ。向こうで自分がターゲットされたときの表示用)
+   */
+  private syncSelfStatus(): void {
+    const store = useAppStore.getState()
+    store.setSelfHp(this.selfHp, PLAYER_MAX_HP)
+    store.setSelfBuffs([...this.selfBuffs.values()].map((b) => b.info))
+    if (this.selectedTarget?.kind === 'self') this.pushTargetToStore()
+    this.sendStat()
+  }
+
+  /** 自分のステータスを配る(to省略で全員)。buffsはノード属性buffsと同じワイヤ形式 */
+  private sendStat(to?: string[]): void {
+    if (!this.net.connected) return
+    const now = performance.now()
+    this.net.sendReliable(
+      {
+        t: 'stat',
+        hp: this.selfHp,
+        hpMax: PLAYER_MAX_HP,
+        buffs: [...this.selfBuffs.values()].map(({ info }) => ({
+          id: info.id,
+          name: info.name,
+          kind: info.kind,
+          remainingMs: info.expiresAt !== null ? Math.max(0, info.expiresAt - now) : undefined,
+          durationMs: info.durationMs ?? undefined,
+        })),
+      },
+      to,
+    )
   }
 
   /** HP0で戦闘不能になる。移動を止めて倒れ、復活ダイアログを出す */
@@ -497,9 +597,8 @@ export class Game {
     if (this.world) this.avatar.position.set(this.world.spawn.x, 0, this.world.spawn.z)
     // カメラ追従OFFでも復帰位置を見失わないようにスナップする
     this.focus.copy(this.avatar.position)
-    const store = useAppStore.getState()
-    store.setSelfHp(this.selfHp, PLAYER_MAX_HP)
-    store.setDead(false)
+    this.syncSelfStatus()
+    useAppStore.getState().setDead(false)
   }
 
   /** 10秒間移動速度を上げるバフを自分に付与する(/dash)。戦闘不能中はthrow(CD返金) */
@@ -525,7 +624,7 @@ export class Game {
     }
     this.selfBuffs.set(def.id, { info, effects: def.effects })
     this.recomputeBuffEffects()
-    this.pushSelfBuffsToStore()
+    this.syncSelfStatus()
   }
 
   /** 期限切れの自分バフを剥がす。tick()から毎フレーム呼ばれる */
@@ -541,7 +640,7 @@ export class Game {
     }
     if (removed) {
       this.recomputeBuffEffects()
-      this.pushSelfBuffsToStore()
+      this.syncSelfStatus()
     }
   }
 
@@ -550,7 +649,7 @@ export class Game {
     if (this.selfBuffs.size === 0) return
     this.selfBuffs.clear()
     this.recomputeBuffEffects()
-    this.pushSelfBuffsToStore()
+    this.syncSelfStatus()
   }
 
   /** 全バフの効果を集計してアバターへ反映する(冪等) */
@@ -560,10 +659,6 @@ export class Game {
       speed *= buff.effects?.speedMultiplier ?? 1
     }
     this.avatar.setSpeedMultiplier(speed)
-  }
-
-  private pushSelfBuffsToStore(): void {
-    useAppStore.getState().setSelfBuffs([...this.selfBuffs.values()].map((b) => b.info))
   }
 
   /**
@@ -598,81 +693,194 @@ export class Game {
     })
   }
 
-  /** 対象を選択する(null=解除)。targetableでないノードはthrow(コマンド側で表示) */
+  /** 選択中ターゲットが指定ノードか(gpatch等でHUDを更新するかの判定) */
+  private isSelectedNode(id: string): boolean {
+    return this.selectedTarget?.kind === 'node' && this.selectedTarget.id === id
+  }
+
+  /** 選択中ターゲットが指定プレイヤーか(stat/profile/退室でHUDを更新するかの判定) */
+  private isSelectedPlayer(id: string): boolean {
+    return this.selectedTarget?.kind === 'player' && this.selectedTarget.id === id
+  }
+
+  /**
+   * /targetの引数を対象参照へ解決する。優先順: 'self' > targetableなシーンノードid >
+   * プレイヤーidentity > プレイヤー表示名(完全一致、複数いれば先頭)。該当なしはnull
+   */
+  private resolveTargetRef(id: string): TargetRef | null {
+    if (id === 'self') return { kind: 'self', id: this.identity }
+    const node = this.sceneRenderer?.getNode(id)
+    if (node?.targetable === true) return { kind: 'node', id }
+    if (this.remotes.has(id)) return { kind: 'player', id }
+    const byName = useAppStore
+      .getState()
+      .players.find((p) => p.name === id && this.remotes.has(p.id))
+    if (byName) return { kind: 'player', id: byName.id }
+    return null
+  }
+
+  /**
+   * 対象を選択する(null=解除)。idはtargetableなシーンノードid、プレイヤーのidentity
+   * または表示名、'self'(自分)。該当なしはthrow(コマンド側で表示)
+   */
   selectTarget(id: string | null): void {
-    if (id !== null) {
-      const node = this.sceneRenderer?.getNode(id)
-      if (node?.targetable !== true) throw new Error(`「${id}」は対象にできません`)
-    }
-    // 対象変更・解除で攻撃の自動接近を中止する(interactの接近は選択と無関係)
-    if (this.pendingApproach?.kind === 'slash' && id !== this.pendingApproach.targetId) {
+    const ref = id === null ? null : this.resolveTargetRef(id)
+    if (id !== null && !ref) throw new Error(`「${id}」は対象にできません`)
+    this.setSelectedTarget(ref)
+  }
+
+  private setSelectedTarget(ref: TargetRef | null): void {
+    // 対象変更・解除でスキルの自動接近を中止する(interactの接近は選択と無関係)
+    const pending = this.pendingApproach
+    if (
+      pending?.kind === 'skill' &&
+      (ref === null || ref.kind !== pending.target.kind || ref.id !== pending.target.id)
+    ) {
       this.pendingApproach = null
     }
-    this.selectedTargetId = id
+    this.selectedTarget = ref
     this.pushTargetToStore()
+  }
+
+  /**
+   * 対象参照をスキル用の情報(名前・ワールド座標・半径・生存)へ展開する。
+   * 消えたノード・退室したプレイヤーはnull。ノードの座標は補間ターゲット(サーバー値)、
+   * プレイヤーは補間中の表示位置(位置はそれしか届かない)
+   */
+  private describeTarget(ref: TargetRef): SkillTarget | null {
+    const renderer = this.sceneRenderer
+    switch (ref.kind) {
+      case 'node': {
+        const node = renderer?.getNode(ref.id)
+        if (node?.targetable !== true) return null
+        const pos = renderer?.worldPosition(ref.id)
+        if (!pos) return null
+        const radius = typeof node.collider === 'number' && node.collider > 0 ? node.collider : 0.5
+        return {
+          kind: 'node',
+          id: ref.id,
+          name: String(node.name ?? ref.id),
+          x: pos.x,
+          z: pos.z,
+          radius,
+          alive: node.visible !== false,
+        }
+      }
+      case 'player': {
+        const pos = this.remotes.position(ref.id)
+        if (!pos) return null
+        return {
+          kind: 'player',
+          id: ref.id,
+          name: this.peerDisplayName(ref.id),
+          x: pos.x,
+          z: pos.z,
+          radius: PLAYER_TARGET_RADIUS,
+          alive: !this.remotes.isDead(ref.id),
+        }
+      }
+      case 'self':
+        return this.acquireSelf()
+    }
+  }
+
+  /** 自分をスキル対象として返す(/healの既定対象) */
+  acquireSelf(): SkillTarget {
+    return {
+      kind: 'self',
+      id: this.identity,
+      name: this.displayName() || this.identity,
+      x: this.avatar.position.x,
+      z: this.avatar.position.z,
+      radius: PLAYER_TARGET_RADIUS,
+      alive: !this.dead,
+    }
+  }
+
+  /** プレイヤーの表示名(profile)。未受信ならidentity */
+  private peerDisplayName(id: string): string {
+    return this.remotes.nameOf(id) || id
   }
 
   /**
    * 対象指定スキル用の対象取得。選択済みで有効ならそれを返し、
-   * 未選択・無効ならカーソル直下のtargetableエンティティを自動選択して返す
+   * 未選択・無効ならカーソル直下の対象(targetableノード/プレイヤー/自分)を自動選択して返す
    */
-  acquireTarget(): { id: string; name: string; x: number; z: number; radius: number } | null {
-    const renderer = this.sceneRenderer
-    if (!renderer) return null
-    const describe = (id: string) => {
-      const node = renderer.getNode(id)
-      if (node?.targetable !== true || node.visible === false) return null
-      const pos = renderer.worldPosition(id)
-      if (!pos) return null
-      const radius = typeof node.collider === 'number' && node.collider > 0 ? node.collider : 0.5
-      return { id, name: String(node.name ?? id), x: pos.x, z: pos.z, radius }
+  acquireTarget(): SkillTarget | null {
+    if (this.selectedTarget) {
+      const current = this.describeTarget(this.selectedTarget)
+      // 倒れたノードは対象として無効(カーソル直下へフォールバック)。プレイヤーは生死を持ち帰る
+      if (current && (current.kind !== 'node' || current.alive)) return current
     }
-    if (this.selectedTargetId) {
-      const current = describe(this.selectedTargetId)
-      if (current) return current
-    }
-    // 未選択(または選択が無効): カーソル直下のtargetableエンティティを自動選択する
+    // 未選択(または選択が無効): カーソル直下の対象を自動選択する
     if (!this.pointer) return null
     const rect = this.renderer.domElement.getBoundingClientRect()
-    const hoveredId = this.nodeAt(this.pointer.x + rect.left, this.pointer.y + rect.top)
-    const targetId = hoveredId ? renderer.findAncestorWith(hoveredId, 'targetable') : null
-    if (!targetId) return null
-    const hovered = describe(targetId)
-    if (!hovered) return null
-    this.selectedTargetId = targetId
-    this.pushTargetToStore()
+    const picked = this.pickAt(this.pointer.x + rect.left, this.pointer.y + rect.top)
+    const ref = picked ? this.pickToTargetRef(picked) : null
+    if (!ref) return null
+    const hovered = this.describeTarget(ref)
+    if (!hovered || (hovered.kind === 'node' && !hovered.alive)) return null
+    this.setSelectedTarget(ref)
     return hovered
+  }
+
+  /** レイキャスト結果を選択可能な対象参照へ解決する(targetable属性を持つ祖先ノード等) */
+  private pickToTargetRef(picked: PickResult): TargetRef | null {
+    if (picked.kind === 'node') {
+      const id = this.sceneRenderer?.findAncestorWith(picked.id, 'targetable')
+      return id ? { kind: 'node', id } : null
+    }
+    return picked
   }
 
   /**
    * 選択中ターゲットのHUDスナップショット(store)と選択リングを更新する。
-   * 選択変更時と、対象ノードに関わるシーン更新(gpatch/gsnap/gdespawn)時に呼ぶ。
-   * ノードが消えていたら(despawn)選択を自動解除する
+   * 選択変更時と、対象に関わる更新(gpatch/gsnap/gdespawn、stat/profile/退室、自分のHP・バフ変化)
+   * 時に呼ぶ。対象が消えていたら(despawn・退室)選択を自動解除する
    */
   private pushTargetToStore(): void {
     const { setTarget } = useAppStore.getState()
-    const id = this.selectedTargetId
-    const node = id ? this.sceneRenderer?.getNode(id) : undefined
-    if (!id || !node) {
-      this.selectedTargetId = null
+    const ref = this.selectedTarget
+    const target = ref ? this.describeTarget(ref) : null
+    if (!ref || !target) {
+      this.selectedTarget = null
       this.targetRing.clear()
       setTarget(null)
       return
     }
-    const alive = node.visible !== false
-    const hasHp = typeof node.hp === 'number' && typeof node.hpMax === 'number'
-    setTarget({
-      id,
-      name: String(node.name ?? id),
-      hp: hasHp ? (node.hp as number) : null,
-      hpMax: hasHp ? (node.hpMax as number) : null,
-      alive,
-      buffs: this.targetBuffsCache.get(id) ?? [],
-    })
-    const pos = this.sceneRenderer?.worldPosition(id)
-    if (alive && pos) {
-      const radius = typeof node.collider === 'number' && node.collider > 0 ? node.collider : 0.5
-      this.targetRing.set({ x: pos.x, z: pos.z, radius })
+    const alive = target.alive
+    let hp: number | null = null
+    let hpMax: number | null = null
+    let buffs: BuffInfo[] = []
+    switch (ref.kind) {
+      case 'node': {
+        const node = this.sceneRenderer?.getNode(ref.id)
+        if (typeof node?.hp === 'number' && typeof node.hpMax === 'number') {
+          hp = node.hp
+          hpMax = node.hpMax
+        }
+        buffs = this.targetBuffsCache.get(ref.id) ?? []
+        break
+      }
+      case 'player': {
+        // 本人が配ったstat(未受信ならHPなし=名前だけ表示)
+        const stat = this.peerStats.get(ref.id)
+        if (stat) {
+          hp = stat.hp
+          hpMax = stat.hpMax
+          buffs = stat.buffs
+        }
+        break
+      }
+      case 'self':
+        hp = this.selfHp
+        hpMax = PLAYER_MAX_HP
+        buffs = [...this.selfBuffs.values()].map((b) => b.info)
+        break
+    }
+    setTarget({ kind: ref.kind, id: ref.id, name: target.name, hp, hpMax, alive, buffs })
+    if (alive) {
+      this.targetRing.set({ x: target.x, z: target.z, radius: target.radius })
     } else {
       this.targetRing.clear()
     }
@@ -680,18 +888,33 @@ export class Game {
 
   /**
    * 選択リングを対象の表示位置(補間中座標)へ毎フレーム追従させる。
-   * 移動するエンティティ(スライム等)を選択したままでも滑らかに付いていく
+   * 移動するエンティティ(スライム等)やプレイヤーを選択したままでも滑らかに付いていく
    */
   private updateTargetRing(): void {
-    const id = this.selectedTargetId
-    if (!id) return
-    const renderer = this.sceneRenderer
-    const node = renderer?.getNode(id)
-    // 非表示・消滅時のリングはpushTargetToStoreがclear済みなので触らない
-    if (!node || node.visible === false) return
-    const pos = renderer?.viewWorldPosition(id)
+    const ref = this.selectedTarget
+    if (!ref) return
+    let pos: { x: number; z: number } | null | undefined
+    let radius = PLAYER_TARGET_RADIUS
+    switch (ref.kind) {
+      case 'node': {
+        const renderer = this.sceneRenderer
+        const node = renderer?.getNode(ref.id)
+        // 非表示・消滅時のリングはpushTargetToStoreがclear済みなので触らない
+        if (!node || node.visible === false) return
+        pos = renderer?.viewWorldPosition(ref.id)
+        radius = typeof node.collider === 'number' && node.collider > 0 ? node.collider : 0.5
+        break
+      }
+      case 'player':
+        if (this.remotes.isDead(ref.id)) return
+        pos = this.remotes.position(ref.id)
+        break
+      case 'self':
+        if (this.dead) return
+        pos = this.avatar.position
+        break
+    }
     if (!pos) return
-    const radius = typeof node.collider === 'number' && node.collider > 0 ? node.collider : 0.5
     this.targetRing.set({ x: pos.x, z: pos.z, radius })
   }
 
@@ -710,7 +933,9 @@ export class Game {
     const distance = Math.hypot(x - this.avatar.position.x, z - this.avatar.position.z)
     if (distance > INTERACT_RANGE) {
       // 射程外: エラーにせず自動で接近し、射程に入ったら再実行する
-      if (!this.startApproach('interact', id, INTERACT_RANGE, 0, `/interact ${id}`)) {
+      if (
+        !this.startApproach('interact', { kind: 'node', id }, INTERACT_RANGE, 0, `/interact ${id}`)
+      ) {
         throw new Error('そこへは到達できません')
       }
       return
@@ -840,14 +1065,29 @@ export class Game {
             }
             // 入室済みの相手からのメッセージでプレイヤー一覧に載せる(joinイベントは新規参加者のみのため)
             upsertPlayer(id)
-            if (message.t === 'pos') this.remotes.applyMessage(id, message)
-            // エフェクトは補間中のリモート位置ではなく、送信側の実行時座標を原点にする
-            if (message.t === 'act') this.spawnActionEffect(message.name, message)
+            if (message.t === 'pos') {
+              const wasDead = this.remotes.isDead(id)
+              this.remotes.applyMessage(id, message)
+              if (wasDead !== this.remotes.isDead(id) && this.isSelectedPlayer(id)) {
+                this.pushTargetToStore()
+              }
+            }
+            if (message.t === 'act') {
+              // エフェクトは補間中のリモート位置ではなく、送信側の実行時座標を原点にする
+              this.spawnActionEffect(message.name, message)
+              // 自分を対象にした回復は自分で適用する(HPはクライアント権威)
+              if (message.name === 'heal' && message.tid === this.identity) {
+                this.applyHeal(HEAL_RECEIVE_AMOUNT)
+              }
+            }
+            // 他プレイヤーのHP・バフ(本人がクライアント権威で配る)。ターゲットHUD用
+            if (message.t === 'stat') this.applyPeerStat(id, message)
             // 受信名は相手のクライアント改造に備えてこちらでもサニタイズする
             if (message.t === 'profile' && typeof message.name === 'string') {
               const name = sanitizeName(message.name)
               this.remotes.setName(id, name)
               upsertPlayer(id, name)
+              if (this.isSelectedPlayer(id)) this.pushTargetToStore()
             }
             // 本文も送信側と同様にサニタイズする(相手のクライアント改造対策)
             if (message.t === 'chat' && typeof message.text === 'string') {
@@ -869,13 +1109,17 @@ export class Game {
             upsertPlayer(id)
             const name = this.displayName()
             if (name) this.net.sendReliable({ t: 'profile', name }, [id])
+            this.sendStat([id])
             if (this.selfSpeaking) this.net.sendReliable({ t: 'spk', on: true }, [id])
             if (this.voiceMode !== 'normal') this.net.sendReliable(this.voiceModeMessage(), [id])
           },
           onRemoteLeft: (id) => {
             if (isSystemId(id)) return
             this.remotes.remove(id)
+            this.peerStats.delete(id)
             removePlayer(id)
+            // 選択中の相手が退室したら選択を自動解除する
+            if (this.isSelectedPlayer(id)) this.pushTargetToStore()
             useAppStore.getState().setPeerVoice(id, 'off')
             this.applyRemoteSpeaking(id, false)
             this.peerVoiceModes.delete(id)
@@ -909,6 +1153,7 @@ export class Game {
       // 空でも送る(名前をクリアした場合の伝播)。再接続時もこの経路で再送される
       this.lastSentName = this.displayName()
       net.sendReliable({ t: 'profile', name: this.lastSentName })
+      this.sendStat()
       // 保存済みマスター音量とセッション内の個別音量を新しい接続へ適用する
       const { voiceMasterVolume, playerVolumes } = useAppStore.getState()
       net.voice?.setMasterVolume(voiceMasterVolume)
@@ -1032,6 +1277,7 @@ export class Game {
     stop: () => this.stopMovement(),
     jump: () => this.avatar.jump(),
     performAction: (name, target, tid) => this.performAction(name, target, tid),
+    heal: (target, amount) => this.heal(target, amount),
     playEmote: (id) => this.playEmote(id),
     respawn: () => this.respawn(),
     dash: () => this.dash(),
@@ -1079,10 +1325,11 @@ export class Game {
     getCurrentWorld: () => useAppStore.getState().world,
     switchWorld: (id) => this.switchWorld(id),
     interact: (id) => this.interactNode(id),
-    approachTarget: (id, range, radius, command) =>
-      this.startApproach('slash', id, range, radius, command),
+    approachTarget: (target, range, command) =>
+      this.startApproach('skill', target, range, target.radius, command),
     selectTarget: (id) => this.selectTarget(id),
     acquireTarget: () => this.acquireTarget(),
+    acquireSelf: () => this.acquireSelf(),
     focusChat: () => useAppStore.getState().requestChatFocus(),
     openVrmPicker: () => useAppStore.getState().requestVrmPicker(),
     clearVrmCache: () => {
@@ -1131,27 +1378,40 @@ export class Game {
    * 経路の終端ではなく毎フレームの射程判定(updateApproach)で早期に停止・発動する
    */
   private startApproach(
-    kind: 'slash' | 'interact',
-    targetId: string,
+    kind: 'skill' | 'interact',
+    target: TargetRef,
     range: number,
     radius: number,
     command: string,
   ): boolean {
-    const pos = this.sceneRenderer?.worldPosition(targetId)
+    const pos = this.approachGoal(target)
     if (!pos) return false
     if (!this.moveTo(pos.x, pos.z)) return false // 先頭でpendingApproachもクリアされる
-    this.pendingApproach = { kind, targetId, range, radius, command, goal: { x: pos.x, z: pos.z } }
+    this.pendingApproach = { kind, target, range, radius, command, goal: { x: pos.x, z: pos.z } }
     return true
+  }
+
+  /**
+   * 自動接近の目標座標。ノードはワールド座標(interact対象はtargetable不問なので
+   * describeTargetを使わない)、プレイヤーは表示位置。消えた・倒れた対象はnull
+   */
+  private approachGoal(target: TargetRef): { x: number; z: number } | null {
+    if (target.kind === 'node') {
+      const node = this.sceneRenderer?.getNode(target.id)
+      if (!node || node.visible === false) return null
+      return this.sceneRenderer?.worldPosition(target.id) ?? null
+    }
+    const described = this.describeTarget(target)
+    return described?.alive ? { x: described.x, z: described.z } : null
   }
 
   /** 自動接近の毎フレーム判定。射程に入った瞬間に停止してコマンドを再実行する */
   private updateApproach(): void {
     const pending = this.pendingApproach
     if (!pending) return
-    const node = this.sceneRenderer?.getNode(pending.targetId)
-    const pos = this.sceneRenderer?.worldPosition(pending.targetId)
-    if (!node || node.visible === false || !pos) {
-      // 接近中に対象が消えた(despawn・撃破)
+    const pos = this.approachGoal(pending.target)
+    if (!pos) {
+      // 接近中に対象が消えた(despawn・撃破・退室・戦闘不能)
       this.pendingApproach = null
       useAppStore.getState().appendChat({ kind: 'error', text: '対象がいなくなりました' })
       return
@@ -1169,7 +1429,7 @@ export class Game {
       if (
         !this.startApproach(
           pending.kind,
-          pending.targetId,
+          pending.target,
           pending.range,
           pending.radius,
           pending.command,
@@ -1408,25 +1668,36 @@ export class Game {
   }
 
   /**
-   * 左クリック: 対象可能エンティティなら/target(選択)、インタラクト可能なら
-   * /interactを発行する(両属性持ちは両方)。何もない場所のクリックは選択解除。
+   * 左クリック: 対象可能エンティティ・プレイヤー・自分なら/target(選択)、
+   * インタラクト可能なら/interactを発行する(両属性持ちは両方)。何もない場所のクリックは選択解除。
    * レイキャストは子(ビジュアル)に当たるため、属性を持つ最近傍祖先へ解決する
    */
   private onClick = (event: MouseEvent): void => {
     const renderer = this.sceneRenderer
-    const nodeId = renderer ? this.nodeAt(event.clientX, event.clientY) : null
-    if (!nodeId) {
-      if (this.selectedTargetId) void this.dispatch('/target clear')
+    const picked = renderer ? this.pickAt(event.clientX, event.clientY) : null
+    if (!picked) {
+      if (this.selectedTarget) void this.dispatch('/target clear')
       return
     }
-    const targetId = renderer?.findAncestorWith(nodeId, 'targetable')
+    if (picked.kind === 'player') {
+      void this.dispatch(`/target ${picked.id}`)
+      return
+    }
+    if (picked.kind === 'self') {
+      void this.dispatch('/target self')
+      return
+    }
+    const targetId = renderer?.findAncestorWith(picked.id, 'targetable')
     if (targetId) void this.dispatch(`/target ${targetId}`)
-    const interactId = renderer?.findAncestorWith(nodeId, 'interactable')
+    const interactId = renderer?.findAncestorWith(picked.id, 'interactable')
     if (interactId) void this.dispatch(`/interact ${interactId}`)
   }
 
-  /** スクリーン座標直下のシーンノードid(地面以外)。何もなければnull */
-  private nodeAt(clientX: number, clientY: number): string | null {
+  /**
+   * スクリーン座標直下のもの(地面以外)。シーンノード(id=ヒットしたノード。属性解決は
+   * 呼び出し側)、他プレイヤー(id=identity)、自分のアバターのうち最も手前のもの。何もなければnull
+   */
+  private pickAt(clientX: number, clientY: number): PickResult | null {
     const renderer = this.sceneRenderer
     if (!renderer) return null
     const rect = this.renderer.domElement.getBoundingClientRect()
@@ -1435,9 +1706,22 @@ export class Game {
       -((clientY - rect.top) / rect.height) * 2 + 1,
     )
     this.raycaster.setFromCamera(pointer, this.camera)
-    for (const hit of this.raycaster.intersectObjects(renderer.raycastTargets(), true)) {
+    const objects = [
+      ...renderer.raycastTargets(),
+      ...this.remotes.raycastTargets(),
+      this.avatar.root,
+    ]
+    // intersectObjectsは距離昇順。非表示(映像未着のビルボード等)は飛ばす
+    for (const hit of this.raycaster.intersectObjects(objects, true)) {
+      if (!hit.object.visible) continue
       const nodeId = hit.object.userData.nodeId
-      if (typeof nodeId === 'string') return nodeId
+      if (typeof nodeId === 'string') return { kind: 'node', id: nodeId }
+      // プレイヤー・自分は祖先を辿って判定する(ビルボード・影・ネームプレートが子にいる)
+      for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
+        if (o === this.avatar.root) return { kind: 'self', id: this.identity }
+        const peerId = o.userData.peerId
+        if (typeof peerId === 'string') return { kind: 'player', id: peerId }
+      }
     }
     return null
   }

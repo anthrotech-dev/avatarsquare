@@ -20,4 +20,6 @@ export interface ActionDef {
 export const BUILTIN_ACTIONS: ActionDef[] = [
   { name: 'slash', clip: 'slash', effect: 'slash', stopsMovement: true, needsTarget: false },
   { name: 'shoot', clip: 'shoot', effect: 'shot', stopsMovement: true, needsTarget: true },
+  // 回復: 対象(自分/味方)の足元にエフェクトを出す。tidは対象プレイヤーのidentity
+  { name: 'heal', effect: 'heal', stopsMovement: true, needsTarget: true },
 ]

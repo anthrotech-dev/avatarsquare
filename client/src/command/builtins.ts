@@ -12,6 +12,10 @@ const SLASH_RANGE = 2.2
 
 /** 攻撃スキル(斬撃・射撃)のクールダウン */
 const SKILL_COOLDOWN_MS = 3000
+/** 回復(/heal)の射程(m)・回復量・クールダウン。味方のHPは本人がクライアント権威で適用する */
+const HEAL_RANGE = 6
+const HEAL_AMOUNT = 30
+const HEAL_COOLDOWN_MS = 8000
 
 /** ダッシュのクールダウン(効果時間10秒より長く=常時上げっぱなし不可) */
 const DASH_COOLDOWN_MS = 15_000
@@ -144,10 +148,15 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
           ctx.out.error('対象を選択してください')
           return false
         }
+        // 攻撃できるのはシーンノード(敵・かかし)だけ。味方・自分には使えない
+        if (target.kind !== 'node') {
+          ctx.out.error('この対象には使えません')
+          return false
+        }
         const { x, z } = ctx.api.getPosition()
         if (Math.hypot(target.x - x, target.z - z) - target.radius > SLASH_RANGE) {
           // 射程外: 自動で接近し、射程に入ったら/attackを再実行する(CDはその時に開始)
-          if (!ctx.api.approachTarget(target.id, SLASH_RANGE, target.radius, '/attack')) {
+          if (!ctx.api.approachTarget(target, SLASH_RANGE, '/attack')) {
             ctx.out.error(`「${target.name}」へは到達できません`)
           }
           return false
@@ -156,12 +165,41 @@ export function registerBuiltins(registry: CommandRegistry, macros: MacroStore):
       },
     },
     {
+      name: 'heal',
+      description: '選択中の味方(または自分)のHPを回復する(未選択なら自分)',
+      cooldownMs: HEAL_COOLDOWN_MS,
+      execute(ctx) {
+        // 未選択ならカーソル直下を自動選択し、それも無ければ自分を回復する
+        const target = ctx.api.acquireTarget() ?? ctx.api.acquireSelf()
+        // 回復できるのはプレイヤー(自分・味方)だけ。敵・設置物には使えない
+        if (target.kind === 'node') {
+          ctx.out.error('この対象には使えません')
+          return false
+        }
+        if (!target.alive) {
+          ctx.out.error(`「${target.name}」は戦闘不能です`)
+          return false
+        }
+        const { x, z } = ctx.api.getPosition()
+        if (Math.hypot(target.x - x, target.z - z) - target.radius > HEAL_RANGE) {
+          // 射程外: 自動で接近し、射程に入ったら/healを再実行する(CDはその時に開始)
+          if (!ctx.api.approachTarget(target, HEAL_RANGE, '/heal')) {
+            ctx.out.error(`「${target.name}」へは到達できません`)
+          }
+          return false
+        }
+        ctx.api.heal(target, HEAL_AMOUNT)
+        ctx.api.performAction('heal', { x: target.x, z: target.z }, target.id)
+        ctx.out.print(`「${target.name}」のHPを${HEAL_AMOUNT}回復した`)
+      },
+    },
+    {
       name: 'target',
-      description: '対象を選択/解除する(対象可能ノードのクリックでも選択できる)',
-      usage: '/target <ノードid|clear>',
+      description: '対象を選択/解除する(対象可能ノード・プレイヤーのクリックでも選択できる)',
+      usage: '/target <ノードid|プレイヤー名|self|clear>',
       execute(ctx, args) {
         if (!args[0]) {
-          ctx.out.error('使い方: /target <ノードid|clear>')
+          ctx.out.error('使い方: /target <ノードid|プレイヤー名|self|clear>')
           return
         }
         ctx.api.selectTarget(args[0] === 'clear' ? null : args[0])

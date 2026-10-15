@@ -19,6 +19,7 @@ import {
   type SceneSnapshotMessage,
   type SceneSpawnMessage,
   type SpeakMessage,
+  type StatMessage,
   sanitizeChatText,
   sanitizeName,
   type VoiceModeMessage,
@@ -36,6 +37,16 @@ describe('encodeMessage / decodeMessage', () => {
 
   it('actメッセージがラウンドトリップする(対象地点あり)', () => {
     const message: ActMessage = { t: 'act', name: 'shoot', x: 0, z: 5, yaw: 1.2, tx: 3, tz: 8 }
+    expect(decodeMessage(encodeMessage(message))).toEqual(message)
+  })
+
+  it('statメッセージ(自分のHP・バフ)がラウンドトリップする', () => {
+    const message: StatMessage = {
+      t: 'stat',
+      hp: 70,
+      hpMax: 100,
+      buffs: [{ id: 'dash', name: 'ダッシュ', kind: 'buff', remainingMs: 4000, durationMs: 10000 }],
+    }
     expect(decodeMessage(encodeMessage(message))).toEqual(message)
   })
 

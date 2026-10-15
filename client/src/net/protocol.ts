@@ -42,8 +42,30 @@ export interface ActMessage {
   /** 対象地点(射撃など方向を取るアクションのみ) */
   tx?: number
   tz?: number
-  /** 対象ノードid(対象指定スキルのみ)。サーバーがtargetable/射程を検証する */
+  /**
+   * 対象id(対象指定スキルのみ)。斬撃ならノードid(サーバーがtargetable/射程を検証する)、
+   * 回復ならプレイヤーidentity(対象本人がクライアント権威で適用する)
+   */
   tid?: string
+}
+
+/**
+ * 自分のステータス(HP・バフ)の通知。自分のHP/バフはクライアント権威なので、
+ * 他プレイヤーにターゲットされたときのHUD表示用に本人が配る。
+ * 変化時・接続直後・新規参加者の入室時に送る。
+ * buffsはシーンノードの属性buffsと同じワイヤ形式(remainingMs=送信時点の残り時間)
+ */
+export interface StatMessage {
+  t: 'stat'
+  hp: number
+  hpMax: number
+  buffs: Array<{
+    id: string
+    name: string
+    kind: 'buff' | 'debuff'
+    remainingMs?: number
+    durationMs?: number
+  }>
 }
 
 /**
@@ -173,6 +195,7 @@ export type GameMessage =
   | PosMessage
   | ActMessage
   | ProfileMessage
+  | StatMessage
   | ChatMessage
   | SpeakMessage
   | VoiceModeMessage
@@ -215,6 +238,7 @@ const MESSAGE_TYPES = new Set([
   'pos',
   'act',
   'profile',
+  'stat',
   'chat',
   'spk',
   'vmode',
